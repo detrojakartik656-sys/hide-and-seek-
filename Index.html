@@ -905,3 +905,295 @@
       // Sandbag Cover Half-Walls on 3 sides
       addSolidBox(cx, platY, cz - 2.35, 4.8, 1.05, 0.35, sandbagMat);
       addSolidBox(cx - 2.35, platY, cz, 0.35, 1.05, 4.8, sandbagMat);
+addSolidBox(cx + 2.35, platY, cz, 0.35, 1.05, 4.8, sandbagMat);
+      // Canopy Roof
+      addSolidBox(cx, platY + 2.6, cz, 5.6, 0.25, 5.6, roofTileMat, { collide: false });
+      // Access Stair Ramp from +Z side
+      addStairRamp(cx, cz + 4.9, 2.1, 5.0, 0.2, platY, 'Z', -1, woodFloorMat);
+      hidingSpots.push({ x: cx, z: cz, y: platY });
+    }
+
+    // Parked Battle-Royale Military Jeep / Truck Cover Prop
+    function buildMilitaryVehicle(cx, cz, rotY, bodyColor) {
+      const group = new THREE.Group();
+      group.position.set(cx, 0, cz);
+      group.rotation.y = rotY;
+
+      const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.62, metalness: 0.35 });
+      const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.8, transparent: true, opacity: 0.55 });
+
+      // Chassis & Hood
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.95, 4.6), bodyMat);
+      chassis.position.y = 0.82;
+      chassis.castShadow = state.quality === 'HIGH';
+      chassis.receiveShadow = true;
+      group.add(chassis);
+
+      // Cabin
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.85, 2.3), bodyMat);
+      cabin.position.set(0, 1.65, -0.35);
+      cabin.castShadow = state.quality === 'HIGH';
+      group.add(cabin);
+
+      // Windshield
+      const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.65, 2.36), glassMat);
+      windshield.position.set(0, 1.65, -0.35);
+      group.add(windshield);
+
+      // 4 Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.36, 12);
+      wheelGeo.rotateZ(Math.PI / 2);
+      [[-1.15, 1.4], [1.15, 1.4], [-1.15, -1.4], [1.15, -1.4]].forEach(([wx, wz]) => {
+        const w = new THREE.Mesh(wheelGeo, tireMat);
+        w.position.set(wx, 0.46, wz);
+        group.add(w);
+      });
+
+      cityGroup.add(group);
+
+      // Axis-aligned collider matching vehicle orientation
+      const isRotated90 = Math.abs(Math.sin(rotY)) > 0.7;
+      const hw = isRotated90 ? 2.35 : 1.25;
+      const hd = isRotated90 ? 1.25 : 2.35;
+      colliders.push({
+        minX: cx - hw, maxX: cx + hw,
+        minZ: cz - hd, maxZ: cz + hd,
+        minY: 0, maxY: 2.1,
+        isWall: false
+      });
+    }
+
+    function addCityTree(x, z) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.48, 3.2, 7), trunkMat);
+      trunk.position.set(x, 1.6, z);
+      trunk.castShadow = state.quality === 'HIGH';
+      cityGroup.add(trunk);
+
+      const crown1 = new THREE.Mesh(new THREE.DodecahedronGeometry(2.4, 1), foliageMat);
+      crown1.position.set(x, 4.2, z);
+      crown1.castShadow = state.quality === 'HIGH';
+      cityGroup.add(crown1);
+
+      const crown2 = new THREE.Mesh(new THREE.DodecahedronGeometry(1.7, 1), bushMat);
+      crown2.position.set(x + 0.8, 5.2, z - 0.5);
+      cityGroup.add(crown2);
+
+      colliders.push({ minX: x - 0.55, maxX: x + 0.55, minZ: z - 0.55, maxZ: z + 0.55, minY: 0, maxY: 5, isWall: false });
+    }
+
+    function addHidingBush(x, z, scale = 1.0) {
+      const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(1.35 * scale, 1), bushMat);
+      bush.scale.set(1.2, 0.78, 1.2);
+      bush.position.set(x, 0.75 * scale, z);
+      bush.castShadow = state.quality === 'HIGH';
+      bush.receiveShadow = true;
+      cityGroup.add(bush);
+    }
+
+    function buildCityArena() {
+      while (cityGroup.children.length > 0) cityGroup.remove(cityGroup.children[0]);
+      colliders.length = 0;
+      walkableZones.length = 0;
+      hidingSpots.length = 0;
+
+      const size = CONFIG.ARENA_HALF_SIZE * 2;
+
+      // 1. Lush Erangel / Bermuda Grass & Soil Terrain Base
+      const groundGeo = new THREE.PlaneGeometry(size + 36, size + 36);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x4b633c,
+        roughness: 0.92,
+        metalness: 0.05
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      cityGroup.add(ground);
+
+      // Dirt Compound Clearings under Village Clusters
+      const dirtMat = new THREE.MeshStandardMaterial({ color: 0x6b5d4d, roughness: 0.94 });
+      const clearingCoords = [
+        [0, 0, 44, 44],
+        [-58, -56, 48, 46],
+        [58, -56, 48, 46],
+        [-58, 56, 48, 46],
+        [58, 56, 48, 46],
+        [0, -68, 42, 34],
+        [0, 68, 42, 34],
+        [-72, 0, 34, 42],
+        [72, 0, 34, 42]
+      ];
+      clearingCoords.forEach(([x, z, w, d]) => {
+        const patch = new THREE.Mesh(new THREE.PlaneGeometry(w, d), dirtMat);
+        patch.rotation.x = -Math.PI / 2;
+        patch.position.set(x, 0.015, z);
+        patch.receiveShadow = true;
+        cityGroup.add(patch);
+      });
+
+      // 2. Cracked Asphalt Highway & Village Roads with Lane Markings
+      const roadPositions = [-34, 34];
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x333942, roughness: 0.82, metalness: 0.12 });
+      const stripeMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
+
+      roadPositions.forEach(pos => {
+        const rH = new THREE.Mesh(new THREE.PlaneGeometry(size, 10), roadMat);
+        rH.rotation.x = -Math.PI / 2;
+        rH.position.set(0, 0.025, pos);
+        rH.receiveShadow = true;
+        cityGroup.add(rH);
+
+        const rV = new THREE.Mesh(new THREE.PlaneGeometry(10, size), roadMat);
+        rV.rotation.x = -Math.PI / 2;
+        rV.position.set(pos, 0.03, 0);
+        rV.receiveShadow = true;
+        cityGroup.add(rV);
+
+        for (let s = -98; s <= 98; s += 11) {
+          if (roadPositions.some(rp => Math.abs(s - rp) < 6)) continue;
+          const dashH = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.32), stripeMat);
+          dashH.rotation.x = -Math.PI / 2;
+          dashH.position.set(s, 0.04, pos);
+          cityGroup.add(dashH);
+
+          const dashV = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 4.2), stripeMat);
+          dashV.rotation.x = -Math.PI / 2;
+          dashV.position.set(pos, 0.04, s);
+          cityGroup.add(dashV);
+        }
+      });
+
+      // 3. Reflective Rain Puddles on Roads & Dirt
+      const puddleMat = new THREE.MeshStandardMaterial({
+        color: 0x7dd3fc,
+        emissive: 0x1e3a5f,
+        emissiveIntensity: 0.25,
+        roughness: 0.08,
+        metalness: 0.9,
+        transparent: true,
+        opacity: 0.68
+      });
+      const puddleGeo = new THREE.CircleGeometry(1, 20);
+      for (let i = 0; i < 24; i++) {
+        const road = roadPositions[i % roadPositions.length];
+        const along = ((i * 41) % 184) - 92;
+        const puddle = new THREE.Mesh(puddleGeo, puddleMat);
+        puddle.rotation.x = -Math.PI / 2;
+        puddle.scale.set(1.5 + (i % 3) * 0.8, 1.1 + ((i + 1) % 2) * 0.7, 1);
+        if (i % 2 === 0) puddle.position.set(along, 0.042, road + ((i % 3) - 1) * 2.1);
+        else puddle.position.set(road + ((i % 3) - 1) * 2.1, 0.042, along);
+        cityGroup.add(puddle);
+      }
+
+      // 4. CENTRAL POCHINKI / MILITARY COMPOUND (Final Shrink Zone Arena)
+      buildWatchtower(0, -10);
+      buildTacticalHouse(-13, 8, { w: 12, d: 10, stories: 1, wallMat: wallBrickMat });
+      buildTacticalHouse(13, 8, { w: 12, d: 10, stories: 1, wallMat: wallPlasterMat });
+      buildOpenContainer(0, 14, 'X', containerBlueTex);
+      buildMilitaryVehicle(-7, -14, Math.PI * 0.25, 0x3f6212);
+      // Sandbag Cover Bunkers in Center
+      addSolidBox(7, 0, -14, 4.2, 1.15, 0.75, sandbagMat);
+      addSolidBox(0, 0, 2, 3.6, 1.1, 0.75, sandbagMat);
+
+      // 5. FOUR QUADRANT TACTICAL VILLAGES (Enterable 1- & 2-Story Houses + Containers)
+      // NW Village (-58, -56)
+      buildTacticalHouse(-64, -64, { w: 14, d: 11, stories: 2, wallMat: wallPlasterMat });
+      buildTacticalHouse(-52, -48, { w: 12, d: 10, stories: 1, wallMat: wallBrickMat });
+      buildOpenContainer(-68, -46, 'Z', containerRedTex);
+      buildMilitaryVehicle(-46, -66, 0, 0x475569);
+
+      // NE Village (+58, -56)
+      buildTacticalHouse(64, -64, { w: 14, d: 11, stories: 2, wallMat: wallBrickMat });
+      buildTacticalHouse(52, -48, { w: 12, d: 10, stories: 1, wallMat: wallPlasterMat });
+      buildOpenContainer(68, -46, 'Z', containerOliveTex);
+      buildWatchtower(47, -67);
+
+      // SW Village (-58, +56)
+      buildTacticalHouse(-64, 64, { w: 14, d: 11, stories: 2, wallMat: wallPlasterMat });
+      buildTacticalHouse(-52, 48, { w: 12, d: 10, stories: 1, wallMat: wallBrickMat });
+      buildOpenContainer(-68, 46, 'Z', containerBlueTex);
+      buildWatchtower(-47, 67);
+
+      // SE Village (+58, +56)
+      buildTacticalHouse(64, 64, { w: 14, d: 11, stories: 2, wallMat: wallBrickMat });
+      buildTacticalHouse(52, 48, { w: 12, d: 10, stories: 1, wallMat: wallPlasterMat });
+      buildOpenContainer(68, 46, 'Z', containerRedTex);
+      buildMilitaryVehicle(46, 66, Math.PI, 0x7c2d12);
+
+      // 6. CARDINAL OUTPOSTS (North, South, East, West Roadside Compounds)
+      // North Outpost
+      buildTacticalHouse(0, -72, { w: 14, d: 10, stories: 1, wallMat: wallPlasterMat });
+      buildOpenContainer(-14, -66, 'X', containerOliveTex);
+      buildMilitaryVehicle(14, -64, Math.PI * 0.5, 0x365314);
+
+      // South Outpost
+      buildTacticalHouse(0, 72, { w: 14, d: 10, stories: 1, wallMat: wallBrickMat });
+      buildOpenContainer(14, 66, 'X', containerBlueTex);
+      buildMilitaryVehicle(-14, 64, -Math.PI * 0.5, 0x334155);
+
+      // West Outpost
+      buildTacticalHouse(-74, 0, { w: 11, d: 13, stories: 1, wallMat: wallPlasterMat });
+      buildOpenContainer(-66, -15, 'Z', containerRedTex);
+
+      // East Outpost
+      buildTacticalHouse(74, 0, { w: 11, d: 13, stories: 1, wallMat: wallBrickMat });
+      buildOpenContainer(66, 15, 'Z', containerOliveTex);
+
+      // 7. ROADSIDE COVER (Jersey Barriers, Crates, Trees & Hiding Bushes)
+      const barrierCoords = [
+        [-22, -34, 'X'], [22, -34, 'X'], [-22, 34, 'X'], [22, 34, 'X'],
+        [-34, -22, 'Z'], [-34, 22, 'Z'], [34, -22, 'Z'], [34, 22, 'Z'],
+        [-84, -34, 'X'], [84, -34, 'X'], [-84, 34, 'X'], [84, 34, 'X']
+      ];
+      barrierCoords.forEach(([bx, bz, ax]) => {
+        if (ax === 'X') {
+          addSolidBox(bx - 2.2, 0, bz - 5.8, 3.2, 1.15, 0.65, wallConcreteMat);
+          addSolidBox(bx + 2.2, 0, bz + 5.8, 3.2, 1.15, 0.65, wallConcreteMat);
+        } else {
+          addSolidBox(bx - 5.8, 0, bz - 2.2, 0.65, 1.15, 3.2, wallConcreteMat);
+          addSolidBox(bx + 5.8, 0, bz + 2.2, 0.65, 1.15, 3.2, wallConcreteMat);
+        }
+      });
+
+      // Scatter Trees & Hiding Bushes across open meadows
+      const treeSpots = [
+        [-22, -18], [22, -18], [-22, 22], [22, 22],
+        [-45, -18], [-45, 18], [45, -18], [45, 18],
+        [-18, -48], [18, -48], [-18, 48], [18, 48],
+        [-88, -82], [88, -82], [-88, 82], [88, 82],
+        [-88, -16], [-88, 16], [88, -16], [88, 16],
+        [-24, -92], [24, -92], [-24, 92], [24, 92]
+      ];
+      treeSpots.forEach(([tx, tz]) => {
+        addCityTree(tx, tz);
+        addHidingBush(tx + 2.4, tz + 1.8, 1.05);
+      });
+
+      // Extra standalone bushes for stealth hiding
+      for (let i = 0; i < 28; i++) {
+        const bx = ((i * 53) % 192) - 96;
+        const bz = ((i * 79) % 192) - 96;
+        if (!checkPointInsideBuilding(bx, bz, 2.2)) {
+          addHidingBush(bx, bz, 0.95 + (i % 3) * 0.2);
+        }
+      }
+
+      // 8. Military Perimeter Compound Wall & Fence
+      const wallHeight = 5.5;
+      const half = CONFIG.ARENA_HALF_SIZE;
+      const perimWalls = [
+        { x: 0, z: -half - 1.5, w: size + 6, d: 3 },
+        { x: 0, z: half + 1.5, w: size + 6, d: 3 },
+        { x: -half - 1.5, z: 0, w: 3, d: size + 6 },
+        { x: half + 1.5, z: 0, w: 3, d: size + 6 }
+      ];
+      perimWalls.forEach(w => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w.w, wallHeight, w.d), wallConcreteMat);
+        m.position.set(w.x, wallHeight / 2, w.z);
+        cityGroup.add(m);
+      });
+    }
+
+    // Shrinking Safe-Zone 3D Energy Cylinder
+    const zoneGeo = new THREE.CylinderGeometry(1, 1, 36, 64, 1, true);
