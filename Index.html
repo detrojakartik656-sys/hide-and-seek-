@@ -1801,3 +1801,300 @@ const zoneMat = new THREE.MeshBasicMaterial({
       lastPointerY: 0
     };
   
+
+    window.addEventListener('keydown', e => {
+      input.keys[e.code] = true;
+      if (state.screen === 'PLAYING') {
+        if (e.code === 'KeyQ' || e.code === 'Digit1') triggerPower1();
+        if (e.code === 'KeyE' || e.code === 'Digit2') triggerPower2();
+        if (e.code === 'Space' && playerEntity && playerEntity.y <= 0.22 && !playerEntity.frozen) {
+          playerEntity.vy = 7.4;
+        }
+        if (e.code === 'Escape' || e.code === 'KeyP') pauseGame();
+      } else if (state.screen === 'PAUSED' && (e.code === 'Escape' || e.code === 'KeyP')) {
+        resumeGame();
+      }
+    });
+
+    window.addEventListener('keyup', e => {
+      input.keys[e.code] = false;
+    });
+
+    // Camera Look Drag on Canvas
+    canvas.addEventListener('pointerdown', e => {
+      if (state.screen !== 'PLAYING') return;
+      input.isDraggingCam = true;
+      input.lastPointerX = e.clientX;
+      input.lastPointerY = e.clientY;
+    });
+
+    window.addEventListener('pointermove', e => {
+      if (!input.isDraggingCam || state.screen !== 'PLAYING') return;
+      const dx = e.clientX - input.lastPointerX;
+      const dy = e.clientY - input.lastPointerY;
+      input.lastPointerX = e.clientX;
+      input.lastPointerY = e.clientY;
+      input.camYaw -= dx * 0.0065;
+      input.camPitch = Math.max(0.18, Math.min(1.05, input.camPitch + dy * 0.005));
+    });
+
+    window.addEventListener('pointerup', () => {
+      input.isDraggingCam = false;
+    });
+
+    // Mobile Virtual Joystick
+    const joyZone = document.getElementById('joystick-zone');
+    const joyKnob = document.getElementById('joystick-knob');
+    let joyTouchId = null;
+
+    joyZone.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      joyTouchId = e.pointerId;
+      joyZone.setPointerCapture(e.pointerId);
+      updateJoystick(e.clientX, e.clientY);
+    });
+
+    joyZone.addEventListener('pointermove', e => {
+      if (e.pointerId !== joyTouchId) return;
+      updateJoystick(e.clientX, e.clientY);
+    });
+
+    const resetJoystick = e => {
+      if (e.pointerId !== joyTouchId) return;
+      joyTouchId = null;
+      input.joyX = 0;
+      input.joyY = 0;
+      joyKnob.style.transform = 'translate(0px, 0px)';
+    };
+    joyZone.addEventListener('pointerup', resetJoystick);
+    joyZone.addEventListener('pointercancel', resetJoystick);
+
+    function updateJoystick(clientX, clientY) {
+      const rect = joyZone.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const maxDist = rect.width * 0.36;
+      let dx = clientX - centerX;
+      let dy = clientY - centerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > maxDist) {
+        dx = (dx / dist) * maxDist;
+        dy = (dy / dist) * maxDist;
+      }
+      joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+      input.joyX = dx / maxDist;
+      input.joyY = dy / maxDist;
+    }
+
+    // Touch / Click Action Buttons
+    document.getElementById('btn-power-1').addEventListener('pointerdown', e => { e.stopPropagation(); triggerPower1(); });
+    document.getElementById('btn-power-2').addEventListener('pointerdown', e => { e.stopPropagation(); triggerPower2(); });
+    document.getElementById('btn-jump').addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      if (playerEntity && playerEntity.y <= 0.22 && !playerEntity.frozen) playerEntity.vy = 7.4;
+    });
+    const btnSprint = document.getElementById('btn-sprint');
+    btnSprint.addEventListener('pointerdown', e => { e.stopPropagation(); input.sprintHeld = true; });
+    btnSprint.addEventListener('pointerup', () => { input.sprintHeld = false; });
+    btnSprint.addEventListener('pointerleave', () => { input.sprintHeld = false; });
+
+    // ==========================================
+    // 8. AI & PLAYER SIMULATION STEP
+    // ==========================================
+    function updateSimulation(dt) {
+      // 1. Update Match Timer & 3 Shrinking Safe-Zone Phases
+      state.matchTime = Math.max(0, state.matchTime - dt);
+
+      let newPhase = 1;
+      if (state.matchTime <= 70) {
+        newPhase = 3;
+        state.targetZoneRadius = CONFIG.PHASE_RADII[2];
+      } else if (state.matchTime <= 140) {
+        newPhase = 2;
+        state.targetZoneRadius = CONFIG.PHASE_RADII[1];
+      } else {
+        newPhase = 1;
+        state.targetZoneRadius = CONFIG.PHASE_RADII[0];
+      }
+
+      if (newPhase !== state.phase) {
+        state.phase = newPhase;
+        sfx.playPhaseAlert();
+        showEventBanner(`PHASE ${newPhase} — SAFE ZONE SHRINKING TO ${state.targetZoneRadius}M!`);
+      }
+
+      // Smoothly shrink zone wall
+      if (state.zoneRadius > state.targetZoneRadius) {
+        state.zoneRadius = Math.max(state.targetZoneRadius, state.zoneRadius - dt * 2.4);
+      }
+      zoneWallMesh.scale.set(state.zoneRadius, 1, state.zoneRadius);
+      zoneGroundMesh.scale.set(state.zoneRadius, state.zoneRadius, 1);
+
+      if (state.radarRevealTimer > 0) state.radarRevealTimer = Math.max(0, state.radarRevealTimer - dt);
+
+      // Keyboard Camera Orbit Assist
+      if (input.keys['ArrowLeft']) input.camYaw += dt * 2.1;
+      if (input.keys['ArrowRight']) input.camYaw -= dt * 2.1;
+
+      // Separate active Hiders and Seekers for fast AI lookups
+      const activeHidersList = [];
+      const frozenHidersList = [];
+      const seekersList = [];
+
+      for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (e.power1Cd > 0) e.power1Cd = Math.max(0, e.power1Cd - dt);
+        if (e.power2Cd > 0) e.power2Cd = Math.max(0, e.power2Cd - dt);
+        if (e.ghostTimer > 0) e.ghostTimer = Math.max(0, e.ghostTimer - dt);
+        if (e.surgeTimer > 0) e.surgeTimer = Math.max(0, e.surgeTimer - dt);
+
+        if (e.team === 'HIDER') {
+          if (e.frozen) frozenHidersList.push(e);
+          else activeHidersList.push(e);
+        } else {
+          seekersList.push(e);
+        }
+      }
+
+      state.activeHiders = activeHidersList.length;
+      state.frozenHiders = frozenHidersList.length;
+
+      // Check Win Conditions
+      if (state.activeHiders === 0) {
+        endMatch('SEEKER');
+        return;
+      }
+      if (state.matchTime <= 0) {
+        endMatch('HIDER');
+        return;
+      }
+
+      // 2. Update Hologram Decoys
+      for (let i = decoys.length - 1; i >= 0; i--) {
+        const d = decoys[i];
+        d.life -= dt;
+        if (d.life <= 0) {
+          scene.remove(d.parts.root);
+          decoys.splice(i, 1);
+          continue;
+        }
+        d.x += d.dirX * CONFIG.HIDER_SPEED * 1.15 * dt;
+        d.z += d.dirZ * CONFIG.HIDER_SPEED * 1.15 * dt;
+        resolveBuildingCollisions(d);
+        d.animPhase += dt * 14;
+        animateCharacterLimbs(d.parts, true, d.animPhase, true);
+        d.parts.root.position.set(d.x, 0.2, d.z);
+        d.parts.root.rotation.y = d.yaw;
+      }
+
+      // 3. Update All 60 Characters (Player + 59 AI)
+      let playerRescuingTarget = null;
+
+      for (let i = 0; i < entities.length; i++) {
+        const ent = entities[i];
+        const distFromCenter = Math.hypot(ent.x, ent.z);
+        const outsideZone = distFromCenter > state.zoneRadius;
+
+        // Safe-Zone Penalty Handling
+        if (outsideZone) {
+          if (ent.team === 'HIDER' && !ent.frozen) {
+            ent.zoneExposure += dt;
+            if (ent.zoneExposure >= CONFIG.ZONE_FREEZE_TIME) {
+              freezeHider(ent, null);
+            }
+          }
+        } else {
+          ent.zoneExposure = Math.max(0, ent.zoneExposure - dt * 1.5);
+        }
+
+        // Floor, Staircase & Jump Gravity Handling
+        const floorY = getSupportHeight(ent.x, ent.z, ent.y);
+        if (ent.y > floorY + 0.02 || ent.vy > 0) {
+          ent.y += ent.vy * dt;
+          ent.vy -= 19.5 * dt;
+          if (ent.y <= floorY) {
+            ent.y = floorY;
+            ent.vy = 0;
+          }
+        } else {
+          ent.y = floorY;
+          ent.vy = 0;
+        }
+
+        let moveX = 0;
+        let moveZ = 0;
+        let isSprinting = false;
+
+        if (ent.isPlayer) {
+          // PLAYER MOVEMENT
+          if (!ent.frozen) {
+            let forward = 0;
+            let right = 0;
+            if (input.keys['KeyW'] || input.keys['ArrowUp']) forward += 1;
+            if (input.keys['KeyS'] || input.keys['ArrowDown']) forward -= 1;
+            if (input.keys['KeyD']) right += 1;
+            if (input.keys['KeyA']) right -= 1;
+
+            if (Math.abs(input.joyX) > 0.05 || Math.abs(input.joyY) > 0.05) {
+              right += input.joyX;
+              forward -= input.joyY;
+            }
+
+            const mag = Math.hypot(forward, right);
+            if (mag > 0.01) {
+              forward /= Math.max(1, mag);
+              right /= Math.max(1, mag);
+              const sinY = Math.sin(input.camYaw);
+              const cosY = Math.cos(input.camYaw);
+              moveX = -sinY * forward + cosY * right;
+              moveZ = -cosY * forward - sinY * right;
+            }
+
+            const wantSprint = input.keys['ShiftLeft'] || input.keys['ShiftRight'] || input.sprintHeld;
+            if (wantSprint && ent.stamina > 2 && mag > 0.1) {
+              isSprinting = true;
+              ent.stamina = Math.max(0, ent.stamina - dt * 28);
+            } else {
+              ent.stamina = Math.min(100, ent.stamina + dt * 18);
+            }
+          }
+        } else if (!ent.frozen) {
+          // AI MOVEMENT (Compound & Building Interior Aware)
+          ent.aiTimer -= dt;
+
+          if (ent.team === 'HIDER') {
+            let nearestSeeker = null;
+            let nearestSeekerDist = 999;
+            for (let s = 0; s < seekersList.length; s++) {
+              const sk = seekersList[s];
+              const d = Math.hypot(sk.x - ent.x, sk.z - ent.z);
+              if (d < nearestSeekerDist) {
+                nearestSeekerDist = d;
+                nearestSeeker = sk;
+              }
+            }
+
+            let nearestFrozen = null;
+            let nearestFrozenDist = 999;
+            if (nearestSeekerDist > 15) {
+              for (let f = 0; f < frozenHidersList.length; f++) {
+                const fr = frozenHidersList[f];
+                const d = Math.hypot(fr.x - ent.x, fr.z - ent.z);
+                if (d < nearestFrozenDist) {
+                  nearestFrozenDist = d;
+                  nearestFrozen = fr;
+                }
+              }
+            }
+
+            if (outsideZone && distFromCenter > state.zoneRadius - 3) {
+              moveX = -ent.x / distFromCenter;
+              moveZ = -ent.z / distFromCenter;
+              isSprinting = true;
+            } else if (nearestSeeker && nearestSeekerDist < 20) {
+              // Flee away from Seeker toward buildings/cover
+              const awayX = (ent.x - nearestSeeker.x) / (nearestSeekerDist || 1);
+              const awayZ = (ent.z - nearestSeeker.z) / (nearestSeekerDist || 1);
+              const jitter = Math.sin(ent.id + state.matchTime * 1.6) * 0.48;
+              moveX = awayX - awayZ * jitter;
+              moveZ = awayZ + awayX * jitter;
