@@ -298,3 +298,302 @@
           Outsmart 10 relentless Seekers across a neon dusk metropolis or hunt down 50 Hiders before the 3 shrinking zone phases expire.
         </p>
           </div>
+      <!-- Team Selection Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <!-- Hider Team -->
+        <button id="select-hider" type="button" class="team-card selected-hider text-left p-4 sm:p-5 rounded-2xl border-2 border-white/15 relative cursor-pointer">
+          <div class="flex items-center justify-between mb-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-display font-bold text-xs">TEAM SURVIVOR • 50</span>
+            <span class="text-2xl">🛡️</span>
+          </div>
+          <h2 class="font-display font-bold text-xl text-white mb-1">PLAY AS HIDER</h2>
+          <p class="text-xs text-slate-300 leading-relaxed mb-3">
+            Evade Seekers for 3:30, use buildings & alleys for cover, and rescue frozen teammates to keep the squad alive.
+          </p>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-emerald-300 border border-emerald-500/30">🌫️ Smoke Dash</span>
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-sky-300 border border-sky-500/30">👥 AI Decoy</span>
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-cyan-300 border border-cyan-500/30">❄️ Ally Rescue</span>
+          </div>
+        </button>
+
+        <!-- Seeker Team -->
+        <button id="select-seeker" type="button" class="team-card text-left p-4 sm:p-5 rounded-2xl border-2 border-white/15 bg-slate-900/50 relative cursor-pointer">
+          <div class="flex items-center justify-between mb-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-rose-500/20 text-rose-300 font-display font-bold text-xs">TEAM HUNTER • 10</span>
+            <span class="text-2xl">🔥</span>
+          </div>
+          <h2 class="font-display font-bold text-xl text-white mb-1">PLAY AS SEEKER</h2>
+          <p class="text-xs text-slate-300 leading-relaxed mb-3">
+            Sprint faster, scan hiding spots with Thermal Sonar, and freeze all 50 Hiders in stasis crystals before time runs out.
+          </p>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-rose-300 border border-rose-500/30">📡 Thermal Radar</span>
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-amber-300 border border-amber-500/30">⚡ Hunter Surge</span>
+            <span class="px-2 py-0.5 rounded bg-slate-900/80 text-purple-300 border border-purple-500/30">🧊 Stasis Tag</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Graphics Quality & Controls Row -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950/60 p-4 rounded-2xl border border-white/10 mb-6">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-display font-bold uppercase tracking-wider text-slate-400">Graphics:</span>
+          <div class="inline-flex rounded-xl bg-slate-900 p-1 border border-white/10">
+            <button id="qual-high" type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 text-slate-950 transition">HIGH (DUSK FX)</button>
+            <button id="qual-perf" type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition">PERFORMANCE (MOBILE)</button>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 text-center sm:text-right">
+          Desktop: <span class="text-slate-200 font-semibold">WASD + Mouse</span> • Mobile: <span class="text-slate-200 font-semibold">Touch Stick</span>
+        </div>
+      </div>
+
+      <!-- Start Button -->
+      <button id="btn-start-match" type="button" class="w-full py-4 rounded-2xl font-display font-bold text-lg sm:text-xl tracking-wider uppercase text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-400 hover:brightness-110 active:scale-[0.99] transition shadow-[0_0_30px_rgba(52,211,153,0.4)] cursor-pointer">
+        START MATCH — ENTER ARENA
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= PAUSE OVERLAY ================= -->
+  <div id="pause-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div class="max-w-sm w-full hud-glass rounded-3xl p-6 text-center border border-white/15">
+      <h2 class="font-display font-bold text-2xl text-white tracking-wider mb-1">MATCH PAUSED</h2>
+      <p class="text-xs text-slate-400 mb-6">60 AI & Player units suspended</p>
+      <div class="flex flex-col gap-3">
+        <button id="btn-resume" class="w-full py-3 rounded-xl font-display font-bold text-base bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition">
+          RESUME MATCH
+        </button>
+        <button id="btn-toggle-quality-pause" class="w-full py-3 rounded-xl font-display font-bold text-sm bg-slate-800 hover:bg-slate-700 text-sky-300 border border-white/10 transition">
+          GRAPHICS: HIGH
+        </button>
+        <button id="btn-restart-pause" class="w-full py-3 rounded-xl font-display font-bold text-sm bg-slate-800 hover:bg-slate-700 text-amber-300 border border-white/10 transition">
+          RESTART ARENA
+        </button>
+        <button id="btn-mainmenu-pause" class="w-full py-3 rounded-xl font-display font-bold text-sm bg-slate-900 hover:bg-rose-950/60 text-rose-300 border border-rose-500/20 transition">
+          MAIN MENU
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= END-OF-MATCH SUMMARY OVERLAY ================= -->
+  <div id="gameover-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+    <div class="max-w-md w-full hud-glass rounded-3xl p-7 text-center border border-white/15 shadow-2xl">
+      <div id="end-badge" class="inline-block px-3.5 py-1 rounded-full text-xs font-display font-bold tracking-widest uppercase mb-2 bg-emerald-500/20 text-emerald-300">
+        MATCH COMPLETE
+      </div>
+      <h2 id="end-title" class="font-display font-bold text-3xl sm:text-4xl text-white mb-2">HIDERS VICTORY!</h2>
+      <p id="end-subtitle" class="text-sm text-slate-300 mb-6">14 Hiders survived all three shrinking zone phases.</p>
+
+      <!-- Match Stats Grid -->
+      <div class="grid grid-cols-3 gap-2.5 bg-slate-950/70 p-4 rounded-2xl border border-white/10 mb-6">
+        <div>
+          <div class="text-[10px] uppercase text-slate-400 font-bold">Time</div>
+          <div id="stat-time" class="font-display font-bold text-lg text-white">03:30</div>
+        </div>
+        <div>
+          <div id="stat-primary-label" class="text-[10px] uppercase text-slate-400 font-bold">Rescues</div>
+          <div id="stat-primary-val" class="font-display font-bold text-lg text-emerald-400">3</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase text-slate-400 font-bold">Remaining</div>
+          <div id="stat-remaining" class="font-display font-bold text-lg text-sky-400">14 / 50</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="btn-play-again" class="flex-1 py-3.5 rounded-xl font-display font-bold text-base bg-gradient-to-r from-emerald-400 to-sky-400 text-slate-950 hover:brightness-110 transition">
+          PLAY AGAIN
+        </button>
+        <button id="btn-end-menu" class="flex-1 py-3.5 rounded-xl font-display font-bold text-base bg-slate-800 hover:bg-slate-700 text-white border border-white/10 transition">
+          MAIN MENU
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * GAME ON — 10 vs 50 | 3D Survival
+     * Self-contained 3D Urban Survival Engine using Three.js (r128) & Web Audio API.
+     */
+
+    // ==========================================
+    // 1. PROCEDURAL WEB AUDIO SYNTHESIZER
+    // ==========================================
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+      }
+      toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+      }
+      playTone(freq, type, duration, vol = 0.12, endFreq = null) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+          gain.gain.setValueAtTime(vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration);
+        } catch (e) {}
+      }
+      playFreeze() {
+        this.playTone(880, 'triangle', 0.25, 0.16, 220);
+        setTimeout(() => this.playTone(1320, 'sine', 0.3, 0.12, 440), 60);
+      }
+      playRescue() {
+        this.playTone(523.25, 'sine', 0.18, 0.14, 659.25);
+        setTimeout(() => this.playTone(783.99, 'sine', 0.28, 0.15, 1046.5), 110);
+      }
+      playRadar() {
+        this.playTone(280, 'sine', 0.65, 0.18, 920);
+      }
+      playSmoke() {
+        this.playTone(190, 'sawtooth', 0.35, 0.1, 70);
+      }
+      playSurge() {
+        this.playTone(220, 'sawtooth', 0.4, 0.14, 660);
+      }
+      playPhaseAlert() {
+        this.playTone(440, 'square', 0.18, 0.1);
+        setTimeout(() => this.playTone(554.37, 'square', 0.28, 0.12), 200);
+      }
+      playVictory(won) {
+        if (won) {
+          [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+            setTimeout(() => this.playTone(f, 'triangle', 0.35, 0.15), i * 120);
+          });
+        } else {
+          [392, 349.23, 311.13, 261.63].forEach((f, i) => {
+            setTimeout(() => this.playTone(f, 'sawtooth', 0.35, 0.12), i * 150);
+          });
+        }
+      }
+    }
+
+    const sfx = new SoundEngine();
+
+    // ==========================================
+    // 2. GAME CONFIGURATION & GLOBAL STATE
+    // ==========================================
+    const CONFIG = {
+      TOTAL_HIDERS: 50,
+      TOTAL_SEEKERS: 10,
+      MATCH_DURATION: 210, // 3:30
+      ARENA_HALF_SIZE: 112,
+      PHASE_TIMES: [210, 140, 70], // Phase 1: 210->140, Phase 2: 140->70, Phase 3: 70->0
+      PHASE_RADII: [115, 66, 28],
+      HIDER_SPEED: 10.6,
+      SEEKER_SPEED: 12.2,
+      SPRINT_MULT: 1.42,
+      TAG_RADIUS: 2.35,
+      RESCUE_RADIUS: 3.1,
+      RESCUE_TIME: 2.0,
+      ZONE_FREEZE_TIME: 7.5
+    };
+
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+
+    const state = {
+      screen: 'MENU', // MENU, PLAYING, PAUSED, GAMEOVER
+      playerTeam: 'HIDER', // HIDER or SEEKER
+      quality: isMobileDevice ? 'PERF' : 'HIGH',
+      matchTime: CONFIG.MATCH_DURATION,
+      phase: 1,
+      zoneRadius: CONFIG.PHASE_RADII[0],
+      targetZoneRadius: CONFIG.PHASE_RADII[0],
+      activeHiders: 50,
+      frozenHiders: 0,
+      playerRescues: 0,
+      playerTags: 0,
+      radarRevealTimer: 0,
+      shakeIntensity: 0
+    };
+
+    // ==========================================
+    // 3. THREE.JS SCENE, LIGHTING & FALLBACKS
+    // ==========================================
+    const canvas = document.getElementById('game-canvas');
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: state.quality === 'HIGH',
+        powerPreference: 'high-performance'
+      });
+    } catch (e) {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    }
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, state.quality === 'HIGH' ? 2 : 1.25));
+    renderer.shadowMap.enabled = state.quality === 'HIGH';
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    const scene = new THREE.Scene();
+    // Erangel / Bermuda Golden-Hour Tactical Sky & Horizon
+    scene.background = new THREE.Color(0x6d8aa6);
+    scene.fog = new THREE.FogExp2(0x7c95ad, 0.0052);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.35, 360);
+
+    // Tactical Golden-Hour Daylight Lighting
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x3f4e3c, 0.92);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffe4b5, 1.65);
+    sunLight.position.set(85, 115, 65);
+    sunLight.castShadow = state.quality === 'HIGH';
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 280;
+    const d = 120;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    // Cool Sky Bounce / Rim Light for Human Silhouette Clarity
+    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.52);
+    rimLight.position.set(-75, 50, -85);
+    scene.add(rimLight);
+
+    // ==========================================
+    // 4. PUBG / FREE FIRE TACTICAL COMPOUND MAP
+    // ==========================================
+    const colliders = [];     // Wall & solid obstacle AABBs: { minX, maxX, minZ, maxZ, minY, maxY, isWall }
+    const walkableZones = []; // Elevated floors & ramps: { minX, maxX, minZ, maxZ, y0, y1, axis, dir }
+    const hidingSpots = [];   // Interior rooms, containers & cover waypoints for AI
+    const cityGroup = new THREE.Group();
+    scene.add(cityGroup);
+
+    function createCompoundWallTexture() {
+      const c = document.createElement('canvas');
+      c.width = 128;
