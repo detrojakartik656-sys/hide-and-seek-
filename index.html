@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GAME ON — 10 vs 50 | 3D Survival</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0b0f19;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #fff;
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 16px;
+        }
+        .interactive {
+            pointer-events: auto;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(15,23,42,0.95) 0%, rgba(5,7,12,0.98) 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            transition: opacity 0.3s ease;
+        }
+        .screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        h1.game-title {
+            font-size: clamp(2.5rem, 6vw, 4.5rem);
+            font-weight: 900;
+            letter-spacing: 3px;
+            margin: 0 0 10px 0;
+            text-align: center;
+            background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 10px 30px rgba(239, 68, 68, 0.4);
+        }
+        p.game-subtitle {
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: #94a3b8;
+            margin-bottom: 30px;
+            text-align: center;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .card-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .team-card {
+            background: rgba(30, 41, 59, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            width: 280px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+        }
+        .team-card:hover, .team-card.selected {
+            transform: translateY(-6px);
+            border-color: #f59e0b;
+            box-shadow: 0 12px 30px rgba(245, 158, 11, 0.25);
+            background: rgba(30, 41, 59, 0.9);
+        }
+        .team-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.5rem;
+            color: #f8fafc;
+        }
+        .team-card p {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            line-height: 1.4;
+            margin: 0;
+        }
+        .btn {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #fff;
+            border: none;
+            padding: 16px 48px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            box-shadow: 0 8px 25px rgba(245, 158, 11, 0.35);
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            transform: scale(1.04);
+            box-shadow: 0 12px 30px rgba(245, 158, 11, 0.5);
+        }
+        .btn:active {
+            transform: scale(0.98);
+        }
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+        }
+        .hud-box {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 12px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .match-stats {
+            display: flex;
+            gap: 20px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+        .stat-value {
+            font-size: 1.25rem;
+            font-family: monospace;
+        }
+        .hider-color { color: #38bdf8; }
+        .seeker-color { color: #f43f5e; }
+        .timer-val { color: #f59e0b; }
+        #minimap-container {
+            width: 140px;
+            height: 140px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+        #minimap-canvas {
+            width: 100%;
+            height: 100%;
+        }
+        .hud-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            width: 100%;
+        }
+        .ability-container {
+            display: flex;
+            gap: 15px;
+        }
+        .ability-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(30, 41, 59, 0.85);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            transition: all 0.15s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .ability-btn:active {
+            transform: scale(0.92);
+        }
+        .ability-btn span.icon {
+            font-size: 1.4rem;
+            margin-bottom: 2px;
+        }
+        #joystick-zone {
+            width: 130px;
+            height: 130px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            position: relative;
+            touch-action: none;
+            display: none;
+        }
+        #joystick-handle {
+            width: 55px;
+            height: 55px;
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        #banner {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #f59e0b;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: none;
+            text-align: center;
+        }
+        .top-controls {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 20;
+            display: flex;
+            gap: 10px;
+        }
+        .icon-btn {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+        }
+        @media (max-width: 768px) {
+            #joystick-zone {
+                display: block;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-layer">
+        <div class="hud-header">
+            <div class="hud-box match-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Time Left</span>
+                    <span class="stat-value timer-val" id="hud-timer">03:30</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Hiders Alive</span>
+                    <span class="stat-value hider-color" id="hud-hiders">50</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Seekers</span>
+                    <span class="stat-value seeker-color" id="hud-seekers">10</span>
+                </div>
+            </div>
+            <div id="minimap-container">
+                <canvas id="minimap-canvas" width="140" height="140"></canvas>
+            </div>
+        </div>
+
+        <div id="banner">PHASE 1: SURVIVE & HIDE</div>
+
+        <div class="hud-footer">
+            <div id="joystick-zone" class="interactive">
+                <div id="joystick-handle"></div>
+            </div>
+            <div class="ability-container interactive">
+                <div class="ability-btn" onclick="useAbility(1)">
+                    <span class="icon" id="ability-1-icon">💨</span>
+                    <span id="ability-1-name">Dash</span>
+                </div>
+                <div class="ability-btn" onclick="useAbility(2)">
+                    <span class="icon" id="ability-2-icon">👻</span>
+                    <span id="ability-2-name">Decoy</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="top-controls interactive">
+        <button class="icon-btn" onclick="togglePause()">⏸</button>
+    </div>
+
+    <div id="menu-screen" class="screen">
+        <h1 class="game-title">GAME ON</h1>
+        <p class="game-subtitle">10 Seekers vs 50 Hiders — 3D Tactical Survival</p>
+        
+        <div class="card-container">
+            <div class="team-card selected" id="card-hider" onclick="selectTeam('hider')">
+                <h3 class="hider-color">🛡️ HIDER TEAM</h3>
+                <p>Blend into compound houses, use Dash & Decoy, avoid Seeker tag, and rescue frozen allies!</p>
+            </div>
+            <div class="team-card" id="card-seeker" onclick="selectTeam('seeker')">
+                <h3 class="seeker-color">⚔️ SEEKER TEAM</h3>
+                <p>Hunt down all 50 hiders across indoor rooms and rooftops using Thermal Radar and Hunter Surge.</p>
+            </div>
+        </div>
+
+        <button class="btn" onclick="startGame()">DEPLOY TO BATTLE</button>
+    </div>
+
+    <div id="pause-screen" class="screen hidden">
+        <h1 class="game-title" style="font-size: 2.5rem;">GAME PAUSED</h1>
+        <div style="display: flex; gap: 20px; margin-top: 20px;">
+            <button class="btn" onclick="togglePause()">RESUME</button>
+            <button class="btn" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);" onclick="location.reload()">QUIT</button>
+        </div>
+    </div>
+
+    <div id="gameover-screen" class="screen hidden">
+        <h1 class="game-title" id="gameover-title">VICTORY</h1>
+        <p class="game-subtitle" id="gameover-desc">The Hiders successfully survived the raid!</p>
+        <button class="btn" onclick="location.reload()">PLAY AGAIN</button>
+    </div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let selectedTeam = 'hider';
+        let gameStarted = false;
+        let isPaused = false;
+        
+        let matchTimer = 210;
+        let safeZoneRadius = 115;
+
+        let player = null;
+        let characters = [];
+        let buildings = [];
+
+        const keys = { w: false, a: false, s: false, d: false, shift: false };
+        let touchMove = { x: 0, y: 0 };
+        let cameraAngleX = 0, cameraAngleY = 0.5;
+
+        function selectTeam(team) {
+            selectedTeam = team;
+            document.getElementById('card-hider').classList.toggle('selected', team === 'hider');
+            document.getElementById('card-seeker').classList.toggle('selected', team === 'seeker');
+            
+            const ab1Icon = document.getElementById('ability-1-icon');
+            const ab1Name = document.getElementById('ability-1-name');
+            const ab2Icon = document.getElementById('ability-2-icon');
+            const ab2Name = document.getElementById('ability-2-name');
+
+            if (team === 'hider') {
+                ab1Icon.textContent = '💨'; ab1Name.textContent = 'Dash';
+                ab2Icon.textContent = '👻'; ab2Name.textContent = 'Decoy';
+            } else {
+                ab1Icon.textContent = '📡'; ab1Name.textContent = 'Radar';
+                ab2Icon.textContent = '⚡'; ab2Name.textContent = 'Surge';
+            }
+        }
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.012);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.5, 500);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xf59e0b, 1.8);
+            sunLight.position.set(80, 150, 60);
+            sunLight.castShadow = true;
+            scene.add(sunLight);
+
+            buildMap();
+            spawnCharacters();
+
+            window.addEventListener('resize', onWindowResize);
+            setupInputListeners();
+            animate();
+        }
+
+        function buildMap() {
+            const groundGeo = new THREE.PlaneGeometry(350, 350);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const buildingGeo = new THREE.BoxGeometry(18, 10, 18);
+            const buildingMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+
+            const positions = [
+                {-45, -45}, {45, -45}, {-45, 45}, {45, 45},
+                {-80, -45}, {80, -45}, {-80, 45}, {80, 45}
+            ];
+
+            positions.forEach(pos => {
+                const body = new THREE.Mesh(buildingGeo, buildingMat);
+                body.position.set(pos.x, 5, pos.y);
+                body.castShadow = true;
+                body.receiveShadow = true;
+                scene.add(body);
+                buildings.push({ x: pos.x, z: pos.y, w: 18, d: 18 });
+            });
+        }
+
+        function spawnCharacters() {
+            characters = [];
+            for (let i = 0; i < 60; i++) {
+                const isSeeker = i < 10;
+                const isUser = (i === 0 && selectedTeam === 'seeker') || (i === 10 && selectedTeam === 'hider');
+
+                const color = isSeeker ? 0xef4444 : 0x38bdf8;
+                const meshMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.8, 0.5), meshMat);
+                
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 20 + Math.random() * 60;
+                mesh.position.set(Math.cos(angle) * dist, 0.9, Math.sin(angle) * dist);
+                mesh.castShadow = true;
+                scene.add(mesh);
+
+                const charData = {
+                    id: i,
+                    mesh: mesh,
+                    isSeeker: isSeeker,
+                    isPlayer: isUser,
+                    frozen: false,
+                    speed: isSeeker ? 7.2 : 6.5,
+                    targetPos: new THREE.Vector3(),
+                    wanderTimer: 0
+                };
+
+                characters.push(charData);
+                if (isUser) player = charData;
+            }
+        }
+
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyW') keys.w = true;
+                if (e.code === 'KeyS') keys.s = true;
+                if (e.code === 'KeyA') keys.a = true;
+                if (e.code === 'KeyD') keys.d = true;
+                if (e.shiftKey) keys.shift = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW') keys.w = false;
+                if (e.code === 'KeyS') keys.s = false;
+                if (e.code === 'KeyA') keys.a = false;
+                if (e.code === 'KeyD') keys.d = false;
+                if (!e.shiftKey) keys.shift = false;
+            });
+
+            let isMouseDown = false;
+            window.addEventListener('mousedown', () => { isMouseDown = true; });
+            window.addEventListener('mouseup', () => { isMouseDown = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (isMouseDown && !isPaused && gameStarted) {
+                    cameraAngleX -= e.movementX * 0.004;
+                    cameraAngleY = Math.max(0.1, Math.min(1.4, cameraAngleY - e.movementY * 0.004));
+                }
+            });
+
+            const zone = document.getElementById('joystick-zone');
+            const handle = document.getElementById('joystick-handle');
+            let touchId = null;
+
+            zone.addEventListener('touchstart', (e) => {
+                const t = e.changedTouches[0];
+                touchId = t.identifier;
+                updateJoystick(t, zone, handle);
+            }, {passive: true});
+
+            zone.addEventListener('touchmove', (e) => {
+                for (let t of e.changedTouches) {
+                    if (t.identifier === touchId) updateJoystick(t, zone, handle);
+                }
+            }, {passive: true});
+
+            zone.addEventListener('touchend', (e) => {
+                for (let t of e.changedTouches) {
+                    if (t.identifier === touchId) {
+                        touchMove.x = 0; touchMove.y = 0;
+                        handle.style.transform = `translate(-50%, -50%)`;
+                    }
+                }
+            }, {passive: true});
+        }
+
+        function updateJoystick(touch, zone, handle) {
+            const rect = zone.getBoundingClientRect()
