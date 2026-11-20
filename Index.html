@@ -2098,3 +2098,303 @@ const zoneMat = new THREE.MeshBasicMaterial({
               const jitter = Math.sin(ent.id + state.matchTime * 1.6) * 0.48;
               moveX = awayX - awayZ * jitter;
               moveZ = awayZ + awayX * jitter;
+if (ent.stamina > 22 && nearestSeekerDist < 12) isSprinting = true;
+              if (nearestSeekerDist < 6.5 && ent.power1Cd <= 0) {
+                ent.power1Cd = 20;
+                ent.ghostTimer = 3.5;
+                spawnSmokeCloud(ent.x, ent.z);
+              }
+            } else if (nearestFrozen && nearestFrozenDist < 26) {
+              moveX = (nearestFrozen.x - ent.x) / (nearestFrozenDist || 1);
+              moveZ = (nearestFrozen.z - ent.z) / (nearestFrozenDist || 1);
+            } else {
+              // Duck into a tactical building room / container and crouch-hide!
+              if (ent.aiTimer <= 0) {
+                ent.aiTimer = 3.5 + Math.random() * 4.5;
+                if (hidingSpots.length > 0) {
+                  const validSpots = hidingSpots.filter(sp => Math.hypot(sp.x, sp.z) < state.zoneRadius - 5);
+                  const pool = validSpots.length > 0 ? validSpots : hidingSpots;
+                  ent.aiTargetSpot = pool[Math.floor(Math.random() * pool.length)];
+                }
+              }
+              if (ent.aiTargetSpot) {
+                const dx = ent.aiTargetSpot.x - ent.x;
+                const dz = ent.aiTargetSpot.z - ent.z;
+                const distToSpot = Math.hypot(dx, dz);
+                if (distToSpot > 1.8) {
+                  moveX = dx / distToSpot;
+                  moveZ = dz / distToSpot;
+                }
+              }
+            }
+          } else {
+            // SEEKER AI: Chase closest visible Hider or Sweep Tactical Buildings
+            let target = null;
+            let bestDist = 999;
+
+            for (let h = 0; h < activeHidersList.length; h++) {
+              const hd = activeHidersList[h];
+              if (hd.ghostTimer > 0) continue;
+              const d = Math.hypot(hd.x - ent.x, hd.z - ent.z);
+              if (d < bestDist) {
+                bestDist = d;
+                target = hd;
+              }
+            }
+            for (let dc = 0; dc < decoys.length; dc++) {
+              const dec = decoys[dc];
+              const d = Math.hypot(dec.x - ent.x, dec.z - ent.z);
+              if (d < bestDist) {
+                bestDist = d;
+                target = dec;
+              }
+            }
+
+            if (outsideZone && distFromCenter > state.zoneRadius + 4) {
+              moveX = -ent.x / distFromCenter;
+              moveZ = -ent.z / distFromCenter;
+            } else if (target && bestDist < 48) {
+              moveX = (target.x - ent.x) / (bestDist || 1);
+              moveZ = (target.z - ent.z) / (bestDist || 1);
+              if (bestDist < 15 && ent.stamina > 20) isSprinting = true;
+            } else {
+              // Sweep interior building waypoints to flush out hiding players
+              if (ent.aiTimer <= 0 || !ent.aiSweepSpot || Math.hypot(ent.aiSweepSpot.x - ent.x, ent.aiSweepSpot.z - ent.z) < 2.2) {
+                ent.aiTimer = 3.0 + Math.random() * 3.0;
+                if (hidingSpots.length > 0) {
+                  const validSpots = hidingSpots.filter(sp => Math.hypot(sp.x, sp.z) < state.zoneRadius);
+                  const pool = validSpots.length > 0 ? validSpots : hidingSpots;
+                  ent.aiSweepSpot = pool[Math.floor(Math.random() * pool.length)];
+                }
+              }
+              if (ent.aiSweepSpot) {
+                moveX = ent.aiSweepSpot.x - ent.x;
+                moveZ = ent.aiSweepSpot.z - ent.z;
+              }
+            }
+          }
+
+          if (isSprinting) ent.stamina = Math.max(0, ent.stamina - dt * 25);
+          else ent.stamina = Math.min(100, ent.stamina + dt * 16);
+        }
+
+        // Apply Velocity & Speed Modifiers
+        const moveMag = Math.hypot(moveX, moveZ);
+        if (!ent.frozen && moveMag > 0.01) {
+          moveX /= moveMag;
+          moveZ /= moveMag;
+
+          let speed = ent.team === 'HIDER' ? CONFIG.HIDER_SPEED : CONFIG.SEEKER_SPEED;
+          if (isSprinting) speed *= CONFIG.SPRINT_MULT;
+          if (ent.ghostTimer > 0) speed *= 1.48;
+          if (ent.surgeTimer > 0) speed *= 1.62;
+          if (outsideZone && ent.team === 'SEEKER') speed *= 0.8;
+
+          ent.x += moveX * speed * dt;
+          ent.z += moveZ * speed * dt;
+          resolveBuildingCollisions(ent);
+
+          const targetYaw = Math.atan2(moveX, moveZ);
+          let diff = targetYaw - ent.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          ent.yaw += diff * Math.min(1, dt * 12);
+
+          ent.animPhase += dt * speed * 1.25;
+          animateCharacterLimbs(ent.parts, true, ent.animPhase, isSprinting, false);
+        } else {
+          const isHidingCrouch = (ent.team === 'HIDER' && !ent.frozen && !ent.isPlayer);
+          animateCharacterLimbs(ent.parts, false, state.matchTime * 2.5 + ent.id, false, isHidingCrouch);
+        }
+
+        // Visual Stealth & Thermal Sonar Beacon Updates
+        if (ent.team === 'HIDER') {
+          const stealthAlpha = ent.ghostTimer > 0 ? 0.28 : 1.0;
+          ent.parts.bodyMat.transparent = ent.ghostTimer > 0;
+          ent.parts.bodyMat.opacity = stealthAlpha;
+          ent.parts.beacon.visible = (state.playerTeam === 'SEEKER' && state.radarRevealTimer > 0 && !ent.frozen);
+          if (ent.parts.beacon.visible) {
+            ent.parts.beacon.rotation.y += dt * 4;
+          }
+        }
+
+        // Update 3D Transform
+        ent.parts.root.position.set(ent.x, ent.y, ent.z);
+        ent.parts.root.rotation.y = ent.yaw;
+      }
+
+      // 4. Tag & Rescue Interactions (Respecting Vertical Floor Separation)
+      for (let s = 0; s < seekersList.length; s++) {
+        const sk = seekersList[s];
+        const reach = sk.surgeTimer > 0 ? CONFIG.TAG_RADIUS * 1.45 : CONFIG.TAG_RADIUS;
+        for (let h = 0; h < activeHidersList.length; h++) {
+          const hd = activeHidersList[h];
+          if (hd.frozen || Math.abs(sk.y - hd.y) > 1.8) continue;
+          const dist = Math.hypot(sk.x - hd.x, sk.z - hd.z);
+          if (dist <= reach) {
+            freezeHider(hd, sk);
+          }
+        }
+      }
+
+      for (let f = 0; f < frozenHidersList.length; f++) {
+        const fr = frozenHidersList[f];
+        let beingRescuedBy = null;
+
+        for (let h = 0; h < activeHidersList.length; h++) {
+          const rescuer = activeHidersList[h];
+          if (rescuer.frozen || Math.abs(rescuer.y - fr.y) > 1.8) continue;
+          const dist = Math.hypot(rescuer.x - fr.x, rescuer.z - fr.z);
+          if (dist <= CONFIG.RESCUE_RADIUS) {
+            beingRescuedBy = rescuer;
+            if (rescuer.isPlayer || fr.isPlayer) {
+              playerRescuingTarget = fr;
+            }
+            break;
+          }
+        }
+
+        if (beingRescuedBy) {
+          fr.rescueProgress += dt;
+          fr.parts.crystal.rotation.y += dt * 6;
+          if (fr.rescueProgress >= CONFIG.RESCUE_TIME) {
+            unfreezeHider(fr, beingRescuedBy);
+          }
+        } else {
+          fr.rescueProgress = Math.max(0, fr.rescueProgress - dt * 0.7);
+        }
+      }
+
+      // 5. Update VFX & Particles
+      for (let i = vfxList.length - 1; i >= 0; i--) {
+        const v = vfxList[i];
+        v.life -= dt;
+        if (v.life <= 0) {
+          scene.remove(v.mesh);
+          vfxList.splice(i, 1);
+          continue;
+        }
+        const prog = 1 - (v.life / v.maxLife);
+        if (v.type === 'WAVE') {
+          const r = 1 + prog * v.maxRadius;
+          v.mesh.scale.set(r, r, 1);
+          v.mesh.material.opacity = (1 - prog) * 0.85;
+        } else if (v.type === 'SMOKE') {
+          v.mesh.children.forEach((p, idx) => {
+            p.position.y += dt * 0.45;
+            p.rotation.y += dt * (idx % 2 === 0 ? 0.8 : -0.8);
+            p.material.opacity = (1 - prog) * 0.6;
+          });
+        }
+      }
+
+      // Drift ambient pollen / dust motes
+      const posAttr = dustGeo.attributes.position;
+      for (let i = 0; i < particleCount; i++) {
+        let py = posAttr.getY(i) + dt * 0.45;
+        if (py > 18) py = 0.5;
+        posAttr.setY(i, py);
+      }
+      posAttr.needsUpdate = true;
+
+      // 6. Update Third-Person Follow Camera with Collision Clamp
+      updateCamera(dt);
+
+      // 7. Update HUD & Minimap
+      updateHUD(playerRescuingTarget);
+      drawMinimap();
+    }
+
+    // Procedural Articulated Human Locomotion (Stride, Knee Bend, Arm Swing, Sprint Lean & Crouch)
+    function animateCharacterLimbs(parts, isMoving, phase, isSprinting = false, isCrouching = false) {
+      if (isMoving) {
+        const strideAmp = isSprinting ? 0.88 : 0.62;
+        const swingL = Math.sin(phase) * strideAmp;
+        const swingR = Math.sin(phase + Math.PI) * strideAmp;
+
+        // Hip stride & natural knee flexion on backswing
+        parts.leftLeg.hip.rotation.x = swingL;
+        parts.rightLeg.hip.rotation.x = swingR;
+        parts.leftLeg.knee.rotation.x = Math.max(0, -swingL * 0.95);
+        parts.rightLeg.knee.rotation.x = Math.max(0, -swingR * 0.95);
+
+        // Counter-swinging arms with bent elbows
+        parts.leftArm.shoulder.rotation.x = -swingL * 0.82;
+        parts.rightArm.shoulder.rotation.x = -swingR * 0.82;
+        parts.leftArm.elbow.rotation.x = -0.45 - Math.max(0, swingL * 0.35);
+        parts.rightArm.elbow.rotation.x = -0.45 - Math.max(0, swingR * 0.35);
+
+        // Sprint forward torso lean & vertical stride bob
+        const bob = Math.abs(Math.cos(phase)) * 0.055;
+        parts.pelvis.position.y = 0.86 - bob;
+        parts.upperBody.position.y = 0.94 - bob;
+        parts.upperBody.rotation.x = isSprinting ? 0.24 : 0.10;
+        parts.headGroup.rotation.x = isSprinting ? -0.18 : -0.06;
+        parts.headGroup.rotation.y = 0;
+      } else if (isCrouching) {
+        // Tactical Hiding Crouch behind crates/windows
+        parts.pelvis.position.y = 0.62;
+        parts.upperBody.position.y = 0.70;
+        parts.upperBody.rotation.x = 0.34;
+        parts.headGroup.rotation.x = -0.26;
+        parts.headGroup.rotation.y = Math.sin(phase * 0.45) * 0.35; // Scanning for Seekers
+
+        parts.leftLeg.hip.rotation.x = -0.78;
+        parts.leftLeg.knee.rotation.x = 1.35;
+        parts.rightLeg.hip.rotation.x = -0.55;
+        parts.rightLeg.knee.rotation.x = 1.15;
+
+        parts.leftArm.shoulder.rotation.x = -0.45;
+        parts.leftArm.elbow.rotation.x = -0.65;
+        parts.rightArm.shoulder.rotation.x = -0.45;
+        parts.rightArm.elbow.rotation.x = -0.65;
+      } else {
+        // Alert Tactical Idle Stance with subtle breathing & head scan
+        const breath = Math.sin(phase) * 0.015;
+        parts.pelvis.position.y = 0.86;
+        parts.upperBody.position.y = 0.94 + breath;
+        parts.upperBody.rotation.x = 0.04;
+        parts.headGroup.rotation.x = 0;
+        parts.headGroup.rotation.y = Math.sin(phase * 0.4) * 0.22;
+
+        parts.leftLeg.hip.rotation.x *= 0.82;
+        parts.rightLeg.hip.rotation.x *= 0.82;
+        parts.leftLeg.knee.rotation.x *= 0.82;
+        parts.rightLeg.knee.rotation.x *= 0.82;
+
+        parts.leftArm.shoulder.rotation.x = -0.08;
+        parts.leftArm.elbow.rotation.x = -0.28;
+        parts.rightArm.shoulder.rotation.x = -0.08;
+        parts.rightArm.elbow.rotation.x = -0.28;
+      }
+    }
+
+    function updateCamera(dt) {
+      if (!playerEntity) return;
+      const targetPos = new THREE.Vector3(playerEntity.x, playerEntity.y + 1.55, playerEntity.z);
+      const desiredDist = 7.4;
+      const offsetX = Math.sin(input.camYaw) * Math.cos(input.camPitch) * desiredDist;
+      const offsetY = Math.sin(input.camPitch) * desiredDist;
+      const offsetZ = Math.cos(input.camYaw) * Math.cos(input.camPitch) * desiredDist;
+
+      // Ray-step camera pullback so interior walls and doorways never obstruct view
+      let safeDistScale = 1.0;
+      for (let step = 0.22; step <= 1.0; step += 0.12) {
+        const testX = targetPos.x + offsetX * step;
+        const testZ = targetPos.z + offsetZ * step;
+        if (checkPointInsideBuilding(testX, testZ, 0.45, playerEntity.y)) {
+          safeDistScale = Math.max(0.24, step - 0.10);
+          break;
+        }
+      }
+
+      const camPos = new THREE.Vector3(
+        targetPos.x + offsetX * safeDistScale,
+        Math.max(playerEntity.y + 0.95, targetPos.y + offsetY * safeDistScale),
+        targetPos.z + offsetZ * safeDistScale
+      );
+
+      if (state.shakeIntensity > 0) {
+        camPos.x += (Math.random() - 0.5) * state.shakeIntensity;
+        camPos.y += (Math.random() - 0.5) * state.shakeIntensity;
+        state.shakeIntensity = Math.max(0, state.shakeIntensity - dt * 1.8);
