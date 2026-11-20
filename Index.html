@@ -597,3 +597,311 @@
     function createCompoundWallTexture() {
       const c = document.createElement('canvas');
       c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#c2b29b';
+      ctx.fillRect(0, 0, 128, 128);
+      // Weathered plaster & brick patches
+      ctx.fillStyle = 'rgba(120, 102, 82, 0.25)';
+      ctx.fillRect(8, 72, 48, 44);
+      ctx.fillRect(72, 14, 44, 38);
+      ctx.strokeStyle = 'rgba(92, 76, 60, 0.35)';
+      ctx.lineWidth = 2;
+      for (let y = 16; y < 128; y += 16) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(128, y);
+        ctx.stroke();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    function createContainerTexture(baseHex, stripeHex) {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = baseHex;
+      ctx.fillRect(0, 0, 128, 128);
+      // Corrugated steel vertical ribs
+      for (let x = 0; x < 128; x += 8) {
+        ctx.fillStyle = x % 16 === 0 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.08)';
+        ctx.fillRect(x, 0, 4, 128);
+      }
+      ctx.fillStyle = stripeHex;
+      ctx.fillRect(0, 18, 128, 10);
+      ctx.fillRect(0, 100, 128, 10);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    const plasterTex = createCompoundWallTexture();
+    const containerBlueTex = createContainerTexture('#1d4ed8', '#93c5fd');
+    const containerRedTex = createContainerTexture('#b91c1c', '#fca5a5');
+    const containerOliveTex = createContainerTexture('#3f6212', '#bef264');
+
+    // Shared Architectural Materials
+    const wallPlasterMat = new THREE.MeshStandardMaterial({ map: plasterTex, color: 0xd6c7b2, roughness: 0.86 });
+    const wallBrickMat = new THREE.MeshStandardMaterial({ map: plasterTex, color: 0xa86449, roughness: 0.88 });
+    const wallConcreteMat = new THREE.MeshStandardMaterial({ color: 0x78828c, roughness: 0.82 });
+    const floorTileMat = new THREE.MeshStandardMaterial({ color: 0x646e78, roughness: 0.78 });
+    const woodFloorMat = new THREE.MeshStandardMaterial({ color: 0x7c583a, roughness: 0.82 });
+    const roofTileMat = new THREE.MeshStandardMaterial({ color: 0x8b3a2b, roughness: 0.75 });
+    const metalDarkMat = new THREE.MeshStandardMaterial({ color: 0x2b333c, roughness: 0.48, metalness: 0.55 });
+    const crateWoodMat = new THREE.MeshStandardMaterial({ color: 0xa16e3b, roughness: 0.78 });
+    const sandbagMat = new THREE.MeshStandardMaterial({ color: 0xb59e72, roughness: 0.92 });
+    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x3d6b35, roughness: 0.85 });
+    const bushMat = new THREE.MeshStandardMaterial({ color: 0x4b7c38, roughness: 0.9 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543c28, roughness: 0.92 });
+
+    function addSolidBox(x, y, z, w, h, d, mat, options = {}) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      mesh.position.set(x, y + h / 2, z);
+      mesh.castShadow = state.quality === 'HIGH' && (options.castShadow !== false);
+      mesh.receiveShadow = true;
+      cityGroup.add(mesh);
+
+      if (options.collide !== false) {
+        colliders.push({
+          minX: x - w / 2,
+          maxX: x + w / 2,
+          minZ: z - d / 2,
+          maxZ: z + d / 2,
+          minY: y,
+          maxY: y + h,
+          isWall: options.isWall !== false
+        });
+      }
+      return mesh;
+    }
+
+    // Build a wall segment with an open doorway or open window frame
+    function addWallWithOpening(cx, cz, baseY, length, height, thickness, axis, openingType, mat) {
+      // openingType: 'DOOR' (wide 2.9m opening from floor), 'WINDOW' (sill + lintel + open middle), 'SOLID'
+      if (openingType === 'SOLID') {
+        if (axis === 'X') addSolidBox(cx, baseY, cz, length, height, thickness, mat);
+        else addSolidBox(cx, baseY, cz, thickness, height, length, mat);
+        return;
+      }
+
+      const openW = openingType === 'DOOR' ? 2.9 : 2.4;
+      const sideLen = Math.max(0.6, (length - openW) / 2);
+      const offset = openW / 2 + sideLen / 2;
+
+      if (axis === 'X') {
+        addSolidBox(cx - offset, baseY, cz, sideLen, height, thickness, mat);
+        addSolidBox(cx + offset, baseY, cz, sideLen, height, thickness, mat);
+        if (openingType === 'DOOR') {
+          // Header lintel above doorway (y = baseY + 2.75 to baseY + height)
+          const lintelH = Math.max(0.4, height - 2.75);
+          addSolidBox(cx, baseY + 2.75, cz, openW, lintelH, thickness, mat, { collide: false });
+        } else if (openingType === 'WINDOW') {
+          // Lower windowsill (y = baseY to baseY + 1.05) & upper lintel (baseY + 2.45 to top)
+          addSolidBox(cx, baseY, cz, openW, 1.05, thickness, mat);
+          const lintelH = Math.max(0.4, height - 2.45);
+          addSolidBox(cx, baseY + 2.45, cz, openW, lintelH, thickness, mat, { collide: false });
+        }
+      } else {
+        addSolidBox(cx, baseY, cz - offset, thickness, height, sideLen, mat);
+        addSolidBox(cx, baseY, cz + offset, thickness, height, sideLen, mat);
+        if (openingType === 'DOOR') {
+          const lintelH = Math.max(0.4, height - 2.75);
+          addSolidBox(cx, baseY + 2.75, cz, thickness, lintelH, openW, mat, { collide: false });
+        } else if (openingType === 'WINDOW') {
+          addSolidBox(cx, baseY, cz, thickness, 1.05, openW, mat);
+          const lintelH = Math.max(0.4, height - 2.45);
+          addSolidBox(cx, baseY + 2.45, cz, thickness, lintelH, openW, mat, { collide: false });
+        }
+      }
+    }
+
+    // Add sloped walkable staircase/ramp between floors
+    function addStairRamp(x, z, width, length, yStart, yEnd, axis, dir, mat) {
+      const dy = yEnd - yStart;
+      const slopeLen = Math.hypot(length, dy);
+      const angle = Math.atan2(dy, length);
+
+      const rampGeo = axis === 'Z'
+        ? new THREE.BoxGeometry(width, 0.28, slopeLen)
+        : new THREE.BoxGeometry(slopeLen, 0.28, width);
+      const rampMesh = new THREE.Mesh(rampGeo, mat);
+      rampMesh.position.set(x, (yStart + yEnd) / 2 - 0.1, z);
+      if (axis === 'Z') rampMesh.rotation.x = -dir * angle;
+      else rampMesh.rotation.z = dir * angle;
+      rampMesh.castShadow = state.quality === 'HIGH';
+      rampMesh.receiveShadow = true;
+      cityGroup.add(rampMesh);
+
+      // Visual stair treads along the ramp
+      const steps = 8;
+      for (let s = 0; s < steps; s++) {
+        const t = (s + 0.5) / steps;
+        const sy = yStart + dy * t;
+        const offset = (t - 0.5) * length * dir;
+        const tread = new THREE.Mesh(
+          axis === 'Z' ? new THREE.BoxGeometry(width * 0.96, 0.14, length / steps) : new THREE.BoxGeometry(length / steps, 0.14, width * 0.96),
+          metalDarkMat
+        );
+        tread.position.set(
+          axis === 'X' ? x + offset : x,
+          sy,
+          axis === 'Z' ? z + offset : z
+        );
+        cityGroup.add(tread);
+      }
+
+      walkableZones.push({
+        minX: axis === 'X' ? x - length / 2 : x - width / 2,
+        maxX: axis === 'X' ? x + length / 2 : x + width / 2,
+        minZ: axis === 'Z' ? z - length / 2 : z - width / 2,
+        maxZ: axis === 'Z' ? z + length / 2 : z + width / 2,
+        y0: yStart,
+        y1: yEnd,
+        axis,
+        dir
+      });
+    }
+
+    // Construct an Enterable 1-Story or 2-Story PUBG/Free Fire Tactical House
+    function buildTacticalHouse(cx, cz, options = {}) {
+      const w = options.w || 13;
+      const d = options.d || 11;
+      const stories = options.stories || 2;
+      const wallMat = options.wallMat || wallPlasterMat;
+      const floorH = 3.6;
+      const t = 0.42; // Wall thickness
+
+      // Ground Foundation & Tiled Interior Floor
+      addSolidBox(cx, 0, cz, w + 0.6, 0.2, d + 0.6, floorTileMat, { collide: false });
+
+      // Ground Floor Exterior Walls (with 2 wide doorways & 2 open windows)
+      addWallWithOpening(cx, cz + d / 2, 0.2, w, floorH, t, 'X', 'DOOR', wallMat);   // Front door
+      addWallWithOpening(cx, cz - d / 2, 0.2, w, floorH, t, 'X', 'DOOR', wallMat);   // Back door
+      addWallWithOpening(cx - w / 2, cz, 0.2, d, floorH, t, 'Z', 'WINDOW', wallMat); // Left window
+      addWallWithOpening(cx + w / 2, cz, 0.2, d, floorH, t, 'Z', 'WINDOW', wallMat); // Right window
+
+      // Interior Partition Wall with wide doorway for room-to-room hiding
+      addWallWithOpening(cx - 0.6, cz, 0.2, d - 1.2, floorH, 0.32, 'Z', 'DOOR', wallMat);
+
+      // Interior Hiding Cover (crates, tables, barrels inside rooms)
+      addSolidBox(cx - w / 2 + 2.1, 0.2, cz - d / 2 + 2.0, 1.8, 1.35, 1.5, crateWoodMat);
+      addSolidBox(cx + w / 2 - 2.2, 0.2, cz + d / 2 - 2.1, 2.0, 1.25, 1.4, crateWoodMat);
+
+      // Register interior rooms as AI hiding & sweeping waypoints
+      hidingSpots.push({ x: cx - w * 0.25, z: cz - d * 0.22, y: 0.2 });
+      hidingSpots.push({ x: cx + w * 0.25, z: cz + d * 0.22, y: 0.2 });
+
+      if (stories === 1) {
+        // Walkable Flat Roof + Exterior Side Staircase + Low Parapet Wall
+        const roofY = 0.2 + floorH;
+        addSolidBox(cx, roofY - 0.25, cz, w + 0.4, 0.25, d + 0.4, wallConcreteMat, { collide: false });
+        walkableZones.push({
+          minX: cx - w / 2, maxX: cx + w / 2,
+          minZ: cz - d / 2, maxZ: cz + d / 2,
+          y0: roofY, y1: roofY, axis: 'FLAT', dir: 0
+        });
+
+        // Roof Low Parapets (crouch cover on roof)
+        addWallWithOpening(cx, cz + d / 2, roofY, w, 0.95, 0.3, 'X', 'SOLID', wallMat);
+        addWallWithOpening(cx, cz - d / 2, roofY, w, 0.95, 0.3, 'X', 'SOLID', wallMat);
+        addWallWithOpening(cx - w / 2, cz, roofY, d, 0.95, 0.3, 'Z', 'SOLID', wallMat);
+        // Leave gap on +X roof edge for exterior stair access
+        addSolidBox(cx + w / 2, roofY, cz - d / 4 - 0.6, 0.3, 0.95, d / 2 - 1.2, wallMat);
+
+        // Exterior Staircase leading onto roof
+        addStairRamp(cx + w / 2 + 1.35, cz + 1.6, 2.1, 5.4, 0.2, roofY, 'Z', -1, woodFloorMat);
+        hidingSpots.push({ x: cx, z: cz, y: roofY });
+      } else {
+        // 2-Story House: Second Floor Slab with Stairwell Cutout + 2nd Story Walls + Walkable Rooftop
+        const secondY = 0.2 + floorH;
+        const stairW = 2.4;
+        // Main 2nd floor deck (leaving stairwell opening on right side)
+        const mainFloorW = w - stairW - 0.8;
+        addSolidBox(cx - (stairW + 0.8) / 2, secondY - 0.25, cz, mainFloorW, 0.25, d - 0.4, woodFloorMat, { collide: false });
+        walkableZones.push({
+          minX: cx - w / 2, maxX: cx + w / 2 - stairW - 0.6,
+          minZ: cz - d / 2, maxZ: cz + d / 2,
+          y0: secondY, y1: secondY, axis: 'FLAT', dir: 0
+        });
+        // Landing at top of stairs
+        addSolidBox(cx + w / 2 - stairW / 2 - 0.2, secondY - 0.25, cz - d / 2 + 1.8, stairW + 0.4, 0.25, 3.2, woodFloorMat, { collide: false });
+        walkableZones.push({
+          minX: cx + w / 2 - stairW - 0.6, maxX: cx + w / 2,
+          minZ: cz - d / 2, maxZ: cz - d / 2 + 3.4,
+          y0: secondY, y1: secondY, axis: 'FLAT', dir: 0
+        });
+
+        // Interior Staircase from Ground to 2nd Floor
+        addStairRamp(cx + w / 2 - stairW / 2 - 0.25, cz + 1.0, stairW - 0.2, 5.2, 0.2, secondY, 'Z', -1, woodFloorMat);
+
+        // Second Floor Exterior Walls with Windows & Balcony Door
+        addWallWithOpening(cx, cz + d / 2, secondY, w, floorH, t, 'X', 'WINDOW', wallMat);
+        addWallWithOpening(cx, cz - d / 2, secondY, w, floorH, t, 'X', 'WINDOW', wallMat);
+        addWallWithOpening(cx - w / 2, cz, secondY, d, floorH, t, 'Z', 'DOOR', wallMat); // Balcony access
+        addWallWithOpening(cx + w / 2, cz, secondY, d, floorH, t, 'Z', 'WINDOW', wallMat);
+
+        // Exterior Balcony Deck on -X side
+        addSolidBox(cx - w / 2 - 1.3, secondY - 0.22, cz, 2.4, 0.22, d * 0.72, wallConcreteMat, { collide: false });
+        addSolidBox(cx - w / 2 - 2.4, secondY, cz, 0.25, 1.05, d * 0.72, metalDarkMat);
+        walkableZones.push({
+          minX: cx - w / 2 - 2.4, maxX: cx - w / 2,
+          minZ: cz - d * 0.36, maxZ: cz + d * 0.36,
+          y0: secondY, y1: secondY, axis: 'FLAT', dir: 0
+        });
+
+        // Sloped Pitched / Gable Roof Cap
+        const roofBaseY = secondY + floorH;
+        addSolidBox(cx, roofBaseY, cz, w + 0.8, 0.35, d + 0.8, roofTileMat, { collide: false });
+        const ridge = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.68, 2.4, 4), roofTileMat);
+        ridge.position.set(cx, roofBaseY + 1.5, cz);
+        ridge.rotation.y = Math.PI / 4;
+        ridge.castShadow = state.quality === 'HIGH';
+        cityGroup.add(ridge);
+
+        hidingSpots.push({ x: cx - 1.5, z: cz, y: secondY });
+      }
+    }
+
+    // Open-Ended Shipping Container (players & AI can walk straight through or hide inside!)
+    function buildOpenContainer(cx, cz, axis, tex) {
+      const len = 8.4;
+      const wid = 3.2;
+      const h = 3.1;
+      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0.45 });
+
+      if (axis === 'X') {
+        addSolidBox(cx, 0, cz, len, 0.18, wid, metalDarkMat, { collide: false }); // Floor
+        addSolidBox(cx, h, cz, len, 0.22, wid, mat, { collide: false });          // Roof
+        addSolidBox(cx, 0.18, cz - wid / 2 + 0.15, len, h - 0.18, 0.28, mat);    // North wall
+        addSolidBox(cx, 0.18, cz + wid / 2 - 0.15, len, h - 0.18, 0.28, mat);    // South wall
+      } else {
+        addSolidBox(cx, 0, cz, wid, 0.18, len, metalDarkMat, { collide: false });
+        addSolidBox(cx, h, cz, wid, 0.22, len, mat, { collide: false });
+        addSolidBox(cx - wid / 2 + 0.15, 0.18, cz, 0.28, h - 0.18, len, mat);
+        addSolidBox(cx + wid / 2 - 0.15, 0.18, cz, 0.28, h - 0.18, len, mat);
+      }
+      hidingSpots.push({ x: cx, z: cz, y: 0.2 });
+    }
+
+    // Military Watchtower Platform with Ramp Access
+    function buildWatchtower(cx, cz) {
+      const platY = 3.8;
+      // 4 Corner Steel Pillars
+      [[-2.2, -2.2], [2.2, -2.2], [-2.2, 2.2], [2.2, 2.2]].forEach(([ox, oz]) => {
+        addSolidBox(cx + ox, 0, cz + oz, 0.42, platY + 1.1, 0.42, metalDarkMat);
+      });
+      // Elevated Observation Deck
+      addSolidBox(cx, platY - 0.2, cz, 5.2, 0.25, 5.2, woodFloorMat, { collide: false });
+      walkableZones.push({
+        minX: cx - 2.5, maxX: cx + 2.5,
+        minZ: cz - 2.5, maxZ: cz + 2.5,
+        y0: platY, y1: platY, axis: 'FLAT', dir: 0
+      });
+      // Sandbag Cover Half-Walls on 3 sides
+      addSolidBox(cx, platY, cz - 2.35, 4.8, 1.05, 0.35, sandbagMat);
+      addSolidBox(cx - 2.35, platY, cz, 0.35, 1.05, 4.8, sandbagMat);
