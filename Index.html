@@ -2398,3 +2398,402 @@ if (ent.stamina > 22 && nearestSeekerDist < 12) isSprinting = true;
         camPos.x += (Math.random() - 0.5) * state.shakeIntensity;
         camPos.y += (Math.random() - 0.5) * state.shakeIntensity;
         state.shakeIntensity = Math.max(0, state.shakeIntensity - dt * 1.8);
+}
+
+      camera.position.lerp(camPos, Math.min(1, dt * 14));
+      camera.lookAt(targetPos);
+    }
+
+    // ==========================================
+    // 9. HUD & 2D MINIMAP RENDERING
+    // ==========================================
+    const minimapCanvas = document.getElementById('minimap-canvas');
+    const mCtx = minimapCanvas.getContext('2d');
+
+    function drawMinimap() {
+      const w = minimapCanvas.width;
+      const h = minimapCanvas.height;
+      const scale = w / (CONFIG.ARENA_HALF_SIZE * 2);
+      const cx = w / 2;
+      const cy = h / 2;
+
+      mCtx.clearRect(0, 0, w, h);
+
+      // Terrain & Road Grid
+      mCtx.fillStyle = '#142218';
+      mCtx.fillRect(0, 0, w, h);
+
+      mCtx.fillStyle = '#27303f';
+      [-34, 34].forEach(rp => {
+        mCtx.fillRect(0, cy + (rp - 5) * scale, w, 10 * scale);
+        mCtx.fillRect(cx + (rp - 5) * scale, 0, 10 * scale, h);
+      });
+
+      // Draw Compound Walls & Cover Obstacles
+      mCtx.fillStyle = '#64748b';
+      for (let i = 0; i < colliders.length; i++) {
+        const c = colliders[i];
+        if (c.minY > 2.5) continue; // Keep ground-level floorplan clean on minimap
+        const bx = cx + c.minX * scale;
+        const bz = cy + c.minZ * scale;
+        const bw = Math.max(1.2, (c.maxX - c.minX) * scale);
+        const bh = Math.max(1.2, (c.maxZ - c.minZ) * scale);
+        mCtx.fillRect(bx, bz, bw, bh);
+      }
+
+      // Draw Shrinking Safe Zone Circle
+      mCtx.strokeStyle = '#f43f5e';
+      mCtx.lineWidth = 2;
+      mCtx.beginPath();
+      mCtx.arc(cx, cy, state.zoneRadius * scale, 0, Math.PI * 2);
+      mCtx.stroke();
+
+      // Draw Entities
+      for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (e.isPlayer) continue;
+
+        // Visibility rules on minimap
+        if (e.team === 'HIDER' && state.playerTeam === 'SEEKER') {
+          const distToPlayer = playerEntity ? Math.hypot(e.x - playerEntity.x, e.z - playerEntity.z) : 999;
+          if (state.radarRevealTimer <= 0 && !e.frozen && distToPlayer > 22) continue;
+        }
+
+        const px = cx + e.x * scale;
+        const py = cy + e.z * scale;
+        mCtx.beginPath();
+        mCtx.arc(px, py, e.team === 'SEEKER' ? 2.6 : 2.1, 0, Math.PI * 2);
+        if (e.team === 'SEEKER') mCtx.fillStyle = '#f43f5e';
+        else mCtx.fillStyle = e.frozen ? '#38bdf8' : '#10b981';
+        mCtx.fill();
+      }
+
+      // Draw Player Arrow/Dot
+      if (playerEntity) {
+        const px = cx + playerEntity.x * scale;
+        const py = cy + playerEntity.z * scale;
+        mCtx.fillStyle = '#facc15';
+        mCtx.beginPath();
+        mCtx.arc(px, py, 3.8, 0, Math.PI * 2);
+        mCtx.fill();
+        mCtx.strokeStyle = '#0f172a';
+        mCtx.lineWidth = 1.2;
+        mCtx.stroke();
+      }
+    }
+
+    function updateHUD(playerRescuingTarget) {
+      // Timer
+      const mins = Math.floor(state.matchTime / 60);
+      const secs = Math.floor(state.matchTime % 60);
+      document.getElementById('hud-timer').textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      document.getElementById('hud-phase').textContent = `PHASE ${state.phase}`;
+
+      // Team Counts
+      document.getElementById('hud-hiders-active').textContent = state.activeHiders;
+      document.getElementById('hud-hiders-frozen').textContent = `${state.frozenHiders}❄`;
+
+      if (!playerEntity) return;
+
+      // Personal Stat
+      document.getElementById('hud-personal-stat').textContent =
+        state.playerTeam === 'HIDER' ? `Rescues: ${state.playerRescues}` : `Frozen Tags: ${state.playerTags}`;
+
+      // Stamina & Status
+      document.getElementById('hud-stamina-bar').style.width = `${Math.round(playerEntity.stamina)}%`;
+      const statusEl = document.getElementById('hud-status-text');
+      if (playerEntity.frozen) {
+        statusEl.textContent = 'FROZEN ❄';
+        statusEl.className = 'text-[11px] font-bold text-cyan-300 uppercase animate-pulse';
+      } else if (playerEntity.ghostTimer > 0) {
+        statusEl.textContent = 'STEALTH';
+        statusEl.className = 'text-[11px] font-bold text-emerald-300 uppercase';
+      } else if (playerEntity.surgeTimer > 0) {
+        statusEl.textContent = 'SURGE ⚡';
+        statusEl.className = 'text-[11px] font-bold text-rose-400 uppercase';
+      } else {
+        statusEl.textContent = 'ACTIVE';
+        statusEl.className = 'text-[11px] font-bold text-emerald-400 uppercase';
+      }
+
+      // Zone Warning & Vignette
+      const outsideZone = Math.hypot(playerEntity.x, playerEntity.z) > state.zoneRadius;
+      const warnPill = document.getElementById('zone-warning-pill');
+      const vignette = document.getElementById('screen-vignette');
+
+      if (outsideZone) {
+        warnPill.classList.remove('hidden');
+        vignette.style.boxShadow = 'inset 0 0 85px rgba(244, 63, 94, 0.55)';
+      } else {
+        warnPill.classList.add('hidden');
+        if (playerEntity.frozen) {
+          vignette.style.boxShadow = 'inset 0 0 95px rgba(56, 189, 248, 0.65)';
+        } else if (playerEntity.surgeTimer > 0 || playerEntity.ghostTimer > 0) {
+          vignette.style.boxShadow = 'inset 0 0 65px rgba(250, 204, 21, 0.35)';
+        } else {
+          vignette.style.boxShadow = 'none';
+        }
+      }
+
+      // Contextual Rescue / Frozen Bar
+      const promptBox = document.getElementById('context-prompt');
+      if (playerEntity.frozen) {
+        promptBox.classList.remove('hidden');
+        document.getElementById('context-prompt-title').textContent =
+          playerEntity.rescueProgress > 0 ? 'BEING RESCUED BY ALLY...' : 'FROZEN! CALLING TEAMMATES...';
+        document.getElementById('context-prompt-bar').style.width = `${(playerEntity.rescueProgress / CONFIG.RESCUE_TIME) * 100}%`;
+      } else if (playerRescuingTarget) {
+        promptBox.classList.remove('hidden');
+        document.getElementById('context-prompt-title').textContent = 'RESCUING FROZEN TEAMMATE...';
+        document.getElementById('context-prompt-bar').style.width = `${(playerRescuingTarget.rescueProgress / CONFIG.RESCUE_TIME) * 100}%`;
+      } else {
+        promptBox.classList.add('hidden');
+      }
+
+      // Ability Cooldown Overlays
+      updateCooldownUI('power-1', playerEntity.power1Cd, 15);
+      updateCooldownUI('power-2', playerEntity.power2Cd, 16);
+    }
+
+    function updateCooldownUI(idSuffix, cd, maxCd) {
+      const overlay = document.getElementById(`cd-${idSuffix}`);
+      const timerTxt = document.getElementById(`timer-${idSuffix}`);
+      if (cd > 0) {
+        overlay.style.height = `${Math.min(100, (cd / maxCd) * 100)}%`;
+        timerTxt.textContent = `${Math.ceil(cd)}s`;
+        timerTxt.classList.remove('hidden');
+      } else {
+        overlay.style.height = '0%';
+        timerTxt.classList.add('hidden');
+      }
+    }
+
+    let bannerTimeout = null;
+    function showEventBanner(text) {
+      const banner = document.getElementById('event-banner');
+      document.getElementById('event-banner-text').textContent = text;
+      banner.classList.remove('opacity-0');
+      banner.classList.add('opacity-100');
+      clearTimeout(bannerTimeout);
+      bannerTimeout = setTimeout(() => {
+        banner.classList.remove('opacity-100');
+        banner.classList.add('opacity-0');
+      }, 2800);
+    }
+
+    // ==========================================
+    // 10. UI FLOW: MENU, PAUSE, START & END
+    // ==========================================
+    function configureHUDForTeam() {
+      const badge = document.getElementById('hud-role-badge');
+      const p1Icon = document.getElementById('icon-power-1');
+      const p1Label = document.getElementById('label-power-1');
+      const p2Icon = document.getElementById('icon-power-2');
+      const p2Label = document.getElementById('label-power-2');
+
+      if (state.playerTeam === 'HIDER') {
+        badge.textContent = 'HIDER';
+        badge.className = 'text-emerald-400 font-bold uppercase';
+        p1Icon.textContent = '🌫️';
+        p1Label.textContent = 'SMOKE';
+        p2Icon.textContent = '👥';
+        p2Label.textContent = 'DECOY';
+      } else {
+        badge.textContent = 'SEEKER';
+        badge.className = 'text-rose-400 font-bold uppercase';
+        p1Icon.textContent = '📡';
+        p1Label.textContent = 'RADAR';
+        p2Icon.textContent = '⚡';
+        p2Label.textContent = 'SURGE';
+      }
+    }
+
+    function startMatch() {
+      sfx.init();
+      state.matchTime = CONFIG.MATCH_DURATION;
+      state.phase = 1;
+      state.zoneRadius = CONFIG.PHASE_RADII[0];
+      state.targetZoneRadius = CONFIG.PHASE_RADII[0];
+      state.playerRescues = 0;
+      state.playerTags = 0;
+      state.radarRevealTimer = 0;
+
+      buildCityArena();
+      spawnAllCharacters();
+      configureHUDForTeam();
+
+      if (playerEntity) {
+        input.camYaw = playerEntity.yaw + Math.PI;
+      }
+
+      document.getElementById('menu-overlay').classList.add('hidden');
+      document.getElementById('pause-overlay').classList.add('hidden');
+      document.getElementById('gameover-overlay').classList.add('hidden');
+      document.getElementById('hud-layer').classList.remove('hidden');
+
+      state.screen = 'PLAYING';
+      showEventBanner(state.playerTeam === 'HIDER' ? 'SURVIVE 3:30 & RESCUE ALLIES!' : 'HUNT & FREEZE ALL 50 HIDERS!');
+    }
+
+    function pauseGame() {
+      if (state.screen !== 'PLAYING') return;
+      state.screen = 'PAUSED';
+      document.getElementById('pause-overlay').classList.remove('hidden');
+      document.getElementById('btn-toggle-quality-pause').textContent =
+        `GRAPHICS: ${state.quality === 'HIGH' ? 'HIGH' : 'PERFORMANCE'}`;
+    }
+
+    function resumeGame() {
+      if (state.screen !== 'PAUSED') return;
+      state.screen = 'PLAYING';
+      document.getElementById('pause-overlay').classList.add('hidden');
+    }
+
+    function returnToMainMenu() {
+      state.screen = 'MENU';
+      document.getElementById('hud-layer').classList.add('hidden');
+      document.getElementById('pause-overlay').classList.add('hidden');
+      document.getElementById('gameover-overlay').classList.add('hidden');
+      document.getElementById('menu-overlay').classList.remove('hidden');
+      document.getElementById('screen-vignette').style.boxShadow = 'none';
+    }
+
+    function endMatch(winningTeam) {
+      state.screen = 'GAMEOVER';
+      const playerWon = (winningTeam === state.playerTeam);
+      sfx.playVictory(playerWon);
+
+      document.getElementById('hud-layer').classList.add('hidden');
+      document.getElementById('gameover-overlay').classList.remove('hidden');
+
+      const badge = document.getElementById('end-badge');
+      const title = document.getElementById('end-title');
+      const subtitle = document.getElementById('end-subtitle');
+
+      if (playerWon) {
+        badge.textContent = 'VICTORY';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full text-xs font-display font-bold tracking-widest uppercase mb-2 bg-emerald-500/20 text-emerald-300';
+        title.textContent = winningTeam === 'HIDER' ? 'HIDERS SURVIVED!' : 'TOTAL CONTAINMENT!';
+      } else {
+        badge.textContent = 'DEFEAT';
+        badge.className = 'inline-block px-3.5 py-1 rounded-full text-xs font-display font-bold tracking-widest uppercase mb-2 bg-rose-500/20 text-rose-300';
+        title.textContent = winningTeam === 'HIDER' ? 'HIDERS ESCAPED!' : 'ALL HIDERS FROZEN!';
+      }
+
+      subtitle.textContent = winningTeam === 'HIDER'
+        ? `${state.activeHiders} Hider(s) outlasted the 10 Seekers across all 3 zone phases.`
+        : `All 50 Hiders were frozen in stasis crystals before the timer expired.`;
+
+      const elapsed = Math.round(CONFIG.MATCH_DURATION - state.matchTime);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      document.getElementById('stat-time').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+      if (state.playerTeam === 'HIDER') {
+        document.getElementById('stat-primary-label').textContent = 'Your Rescues';
+        document.getElementById('stat-primary-val').textContent = state.playerRescues;
+      } else {
+        document.getElementById('stat-primary-label').textContent = 'Your Tags';
+        document.getElementById('stat-primary-val').textContent = state.playerTags;
+      }
+      document.getElementById('stat-remaining').textContent = `${state.activeHiders} / 50`;
+    }
+
+    function applyGraphicsQuality(q) {
+      state.quality = q;
+      const isHigh = q === 'HIGH';
+      renderer.shadowMap.enabled = isHigh;
+      sunLight.castShadow = isHigh;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isHigh ? 2 : 1.15));
+
+      const btnHigh = document.getElementById('qual-high');
+      const btnPerf = document.getElementById('qual-perf');
+      if (isHigh) {
+        btnHigh.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-500 text-slate-950 transition';
+        btnPerf.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition';
+      } else {
+        btnPerf.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-400 text-slate-950 transition';
+        btnHigh.className = 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition';
+      }
+    }
+
+    // Menu & Overlay Event Listeners
+    const cardHider = document.getElementById('select-hider');
+    const cardSeeker = document.getElementById('select-seeker');
+
+    cardHider.addEventListener('click', () => {
+      state.playerTeam = 'HIDER';
+      cardHider.classList.add('selected-hider');
+      cardSeeker.classList.remove('selected-seeker');
+    });
+
+    cardSeeker.addEventListener('click', () => {
+      state.playerTeam = 'SEEKER';
+      cardSeeker.classList.add('selected-seeker');
+      cardHider.classList.remove('selected-hider');
+    });
+
+    document.getElementById('qual-high').addEventListener('click', () => applyGraphicsQuality('HIGH'));
+    document.getElementById('qual-perf').addEventListener('click', () => applyGraphicsQuality('PERF'));
+    document.getElementById('btn-start-match').addEventListener('click', startMatch);
+
+    document.getElementById('btn-pause').addEventListener('click', pauseGame);
+    document.getElementById('btn-resume').addEventListener('click', resumeGame);
+    document.getElementById('btn-restart-pause').addEventListener('click', startMatch);
+    document.getElementById('btn-mainmenu-pause').addEventListener('click', returnToMainMenu);
+    document.getElementById('btn-toggle-quality-pause').addEventListener('click', () => {
+      applyGraphicsQuality(state.quality === 'HIGH' ? 'PERF' : 'HIGH');
+      document.getElementById('btn-toggle-quality-pause').textContent =
+        `GRAPHICS: ${state.quality === 'HIGH' ? 'HIGH' : 'PERFORMANCE'}`;
+    });
+
+    document.getElementById('btn-play-again').addEventListener('click', startMatch);
+    document.getElementById('btn-end-menu').addEventListener('click', returnToMainMenu);
+
+    document.getElementById('btn-sound').addEventListener('click', () => {
+      const muted = sfx.toggleMute();
+      document.getElementById('icon-sound-on').classList.toggle('hidden', muted);
+      document.getElementById('icon-sound-off').classList.toggle('hidden', !muted);
+    });
+
+    // ==========================================
+    // 11. WINDOW RESIZE & MAIN RENDER LOOP
+    // ==========================================
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    let lastTimestamp = 0;
+    let menuOrbitAngle = 0;
+
+    function animate(timestamp) {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000 || 0.016);
+      lastTimestamp = timestamp;
+
+      if (state.screen === 'PLAYING') {
+        updateSimulation(dt);
+      } else if (state.screen === 'MENU') {
+        // Cinematic sweeping flyover of the 3D city behind the Main Menu
+        menuOrbitAngle += dt * 0.16;
+        camera.position.set(
+          Math.cos(menuOrbitAngle) * 78,
+          36,
+          Math.sin(menuOrbitAngle) * 78
+        );
+        camera.lookAt(0, 6, 0);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      applyGraphicsQuality(state.quality);
+      buildCityArena();
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>
