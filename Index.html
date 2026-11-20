@@ -1497,3 +1497,307 @@ const zoneMat = new THREE.MeshBasicMaterial({
           } else {
             x = (Math.random() - 0.5) * 194;
             z = (Math.random() - 0.5) * 194;
+}
+          if (Math.hypot(x, z) < 25) continue;
+        }
+        if (!checkPointInsideBuilding(x, z, 0.95, 0.2)) {
+          return { x, z };
+        }
+      }
+      return { x: team === 'SEEKER' ? 0 : 62, z: team === 'SEEKER' ? 3 : 62 };
+    }
+
+    function checkPointInsideBuilding(x, z, radius, entityY = 0.2) {
+      for (let i = 0; i < colliders.length; i++) {
+        const c = colliders[i];
+        if (entityY + 1.6 < c.minY || entityY > c.maxY - 0.05) continue;
+        if (x + radius > c.minX && x - radius < c.maxX && z + radius > c.minZ && z - radius < c.maxZ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Determine current ground/floor/staircase elevation at (x, z, currentY)
+    function getSupportHeight(x, z, currentY) {
+      let bestFloor = 0.2;
+      for (let i = 0; i < walkableZones.length; i++) {
+        const wz = walkableZones[i];
+        if (x >= wz.minX - 0.25 && x <= wz.maxX + 0.25 && z >= wz.minZ - 0.25 && z <= wz.maxZ + 0.25) {
+          let h = wz.y0;
+          if (wz.axis === 'Z') {
+            const t = Math.max(0, Math.min(1, wz.dir > 0 ? (z - wz.minZ) / (wz.maxZ - wz.minZ) : (wz.maxZ - z) / (wz.maxZ - wz.minZ)));
+            h = wz.y0 + (wz.y1 - wz.y0) * t;
+          } else if (wz.axis === 'X') {
+            const t = Math.max(0, Math.min(1, wz.dir > 0 ? (x - wz.minX) / (wz.maxX - wz.minX) : (wz.maxX - x) / (wz.maxX - wz.minX)));
+            h = wz.y0 + (wz.y1 - wz.y0) * t;
+          }
+          // Only snap up to floors/ramps within step-up range (1.15m)
+          if (h <= currentY + 1.15 && h > bestFloor) {
+            bestFloor = h;
+          }
+        }
+      }
+      return bestFloor;
+    }
+
+    function resolveBuildingCollisions(entity) {
+      const r = 0.52;
+      const limit = CONFIG.ARENA_HALF_SIZE - 1.2;
+      if (entity.x < -limit) entity.x = -limit;
+      if (entity.x > limit) entity.x = limit;
+      if (entity.z < -limit) entity.z = -limit;
+      if (entity.z > limit) entity.z = limit;
+
+      const ey = entity.y || 0.2;
+
+      for (let i = 0; i < colliders.length; i++) {
+        const c = colliders[i];
+        // Skip walls/obstacles strictly below feet or above head
+        if (ey + 1.65 <= c.minY || ey >= c.maxY - 0.08) continue;
+
+        const closestX = Math.max(c.minX, Math.min(entity.x, c.maxX));
+        const closestZ = Math.max(c.minZ, Math.min(entity.z, c.maxZ));
+        const dx = entity.x - closestX;
+        const dz = entity.z - closestZ;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq < r * r) {
+          const dist = Math.sqrt(distSq) || 0.001;
+          const overlap = r - dist;
+          entity.x += (dx / dist) * overlap;
+          entity.z += (dz / dist) * overlap;
+        }
+      }
+    }
+
+    function spawnAllCharacters() {
+      entities.forEach(e => scene.remove(e.parts.root));
+      decoys.forEach(d => scene.remove(d.parts.root));
+      vfxList.forEach(v => scene.remove(v.mesh));
+      entities.length = 0;
+      decoys.length = 0;
+      vfxList.length = 0;
+
+      for (let i = 0; i < CONFIG.TOTAL_HIDERS; i++) {
+        const isPlayer = (state.playerTeam === 'HIDER' && i === 0);
+        const pos = findSafeSpawnPoint('HIDER');
+        const parts = createCharacterMesh('HIDER', isPlayer);
+        const targetSpot = hidingSpots.length > 0
+          ? hidingSpots[i % hidingSpots.length]
+          : { x: pos.x, z: pos.z, y: 0.2 };
+        const ent = {
+          id: i,
+          team: 'HIDER',
+          isPlayer,
+          x: pos.x,
+          y: 0.2,
+          z: pos.z,
+          vy: 0,
+          yaw: Math.random() * Math.PI * 2,
+          frozen: false,
+          rescueProgress: 0,
+          zoneExposure: 0,
+          stamina: 100,
+          ghostTimer: 0,
+          power1Cd: 0,
+          power2Cd: 0,
+          aiState: 'HIDE',
+          aiTimer: 1 + Math.random() * 3,
+          aiTargetSpot: targetSpot,
+          aiDirX: Math.cos(i),
+          aiDirZ: Math.sin(i),
+          animPhase: Math.random() * 10,
+          parts
+        };
+        entities.push(ent);
+        if (isPlayer) playerEntity = ent;
+      }
+
+      for (let i = 0; i < CONFIG.TOTAL_SEEKERS; i++) {
+        const isPlayer = (state.playerTeam === 'SEEKER' && i === 0);
+        const pos = findSafeSpawnPoint('SEEKER');
+        const parts = createCharacterMesh('SEEKER', isPlayer);
+        const sweepSpot = hidingSpots.length > 0
+          ? hidingSpots[(i * 3) % hidingSpots.length]
+          : { x: 0, z: 0, y: 0.2 };
+        const ent = {
+          id: 50 + i,
+          team: 'SEEKER',
+          isPlayer,
+          x: pos.x,
+          y: 0.2,
+          z: pos.z,
+          vy: 0,
+          yaw: Math.random() * Math.PI * 2,
+          frozen: false,
+          zoneExposure: 0,
+          stamina: 100,
+          surgeTimer: 0,
+          power1Cd: 0,
+          power2Cd: 0,
+          aiTimer: 1 + Math.random() * 2,
+          aiSweepSpot: sweepSpot,
+          aiDirX: Math.cos(i * 1.7),
+          aiDirZ: Math.sin(i * 1.7),
+          animPhase: Math.random() * 10,
+          parts
+        };
+        entities.push(ent);
+        if (isPlayer) playerEntity = ent;
+      }
+    }
+
+    // ==========================================
+    // 6. SPECIAL POWERS & VISUAL EFFECTS
+    // ==========================================
+    function triggerPower1() {
+      if (state.screen !== 'PLAYING' || !playerEntity || playerEntity.frozen) return;
+      if (playerEntity.power1Cd > 0) return;
+
+      if (playerEntity.team === 'HIDER') {
+        // HIDER POWER 1: Smoke Screen & Ghost Dash
+        playerEntity.power1Cd = 14;
+        playerEntity.ghostTimer = 4.2;
+        sfx.playSmoke();
+        spawnSmokeCloud(playerEntity.x, playerEntity.z);
+        showEventBanner('SMOKE DASH ACTIVATED (+50% SPEED & STEALTH)');
+      } else {
+        // SEEKER POWER 1: Thermal Radar Pulse
+        playerEntity.power1Cd = 15;
+        state.radarRevealTimer = 5.5;
+        sfx.playRadar();
+        spawnShockwaveRing(playerEntity.x, playerEntity.z, 0xfacc15, 75);
+        showEventBanner('THERMAL SONAR — HIDERS REVEALED FOR 5S');
+      }
+    }
+
+    function triggerPower2() {
+      if (state.screen !== 'PLAYING' || !playerEntity || playerEntity.frozen) return;
+      if (playerEntity.power2Cd > 0) return;
+
+      if (playerEntity.team === 'HIDER') {
+        // HIDER POWER 2: Hologram Decoy Runner
+        playerEntity.power2Cd = 16;
+        sfx.playSmoke();
+        const decoyParts = createCharacterMesh('HIDER', false);
+        decoyParts.bodyMat.transparent = true;
+        decoyParts.bodyMat.opacity = 0.78;
+        decoys.push({
+          x: playerEntity.x,
+          z: playerEntity.z,
+          yaw: playerEntity.yaw,
+          dirX: Math.sin(playerEntity.yaw),
+          dirZ: Math.cos(playerEntity.yaw),
+          life: 6.5,
+          animPhase: 0,
+          parts: decoyParts
+        });
+        showEventBanner('HOLOGRAM DECOY DEPLOYED');
+      } else {
+        // SEEKER POWER 2: Hunter Surge
+        playerEntity.power2Cd = 14;
+        playerEntity.surgeTimer = 4.2;
+        playerEntity.stamina = 100;
+        sfx.playSurge();
+        spawnShockwaveRing(playerEntity.x, playerEntity.z, 0xf43f5e, 14);
+        showEventBanner('HUNTER SURGE — MAXIMUM SPEED & TAG REACH');
+      }
+    }
+
+    function spawnSmokeCloud(x, z) {
+      const group = new THREE.Group();
+      const puffMat = new THREE.MeshBasicMaterial({
+        color: 0x94a3b8,
+        transparent: true,
+        opacity: 0.65
+      });
+      for (let i = 0; i < 12; i++) {
+        const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4 + Math.random() * 1.1, 1), puffMat.clone());
+        puff.position.set(
+          x + (Math.random() - 0.5) * 5.5,
+          1.2 + Math.random() * 2.2,
+          z + (Math.random() - 0.5) * 5.5
+        );
+        group.add(puff);
+      }
+      scene.add(group);
+      vfxList.push({ type: 'SMOKE', mesh: group, life: 5.0, maxLife: 5.0 });
+    }
+
+    function spawnShockwaveRing(x, z, colorHex, maxRadius) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.7, 1.0, 48),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 0.35, z);
+      scene.add(ring);
+      vfxList.push({ type: 'WAVE', mesh: ring, life: 1.1, maxLife: 1.1, maxRadius });
+    }
+
+    function spawnFreezeBurst(x, z, colorHex) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.3, 1.2, 24),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.95 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 0.4, z);
+      scene.add(ring);
+      vfxList.push({ type: 'WAVE', mesh: ring, life: 0.55, maxLife: 0.55, maxRadius: 4.5 });
+    }
+
+    function freezeHider(hider, seeker) {
+      if (hider.frozen) return;
+      hider.frozen = true;
+      hider.rescueProgress = 0;
+      hider.ghostTimer = 0;
+      hider.parts.crystal.visible = true;
+      hider.parts.baseRing.material.color.setHex(0x38bdf8);
+      spawnFreezeBurst(hider.x, hider.z, 0x38bdf8);
+
+      if (seeker && seeker.isPlayer) {
+        state.playerTags++;
+        state.shakeIntensity = 0.35;
+        sfx.playFreeze();
+      } else if (hider.isPlayer) {
+        state.shakeIntensity = 0.5;
+        sfx.playFreeze();
+        showEventBanner('YOU WERE FROZEN! WAIT FOR A TEAMMATE TO RESCUE YOU');
+      }
+    }
+
+    function unfreezeHider(hider, rescuer) {
+      if (!hider.frozen) return;
+      hider.frozen = false;
+      hider.rescueProgress = 0;
+      hider.zoneExposure = 0;
+      hider.parts.crystal.visible = false;
+      hider.parts.baseRing.material.color.setHex(hider.isPlayer ? 0xfacc15 : 0x34d399);
+      spawnFreezeBurst(hider.x, hider.z, 0x10b981);
+
+      if (rescuer && rescuer.isPlayer) {
+        state.playerRescues++;
+        sfx.playRescue();
+        showEventBanner('TEAMMATE RESCUED! (+1 RESCUE)');
+      } else if (hider.isPlayer) {
+        sfx.playRescue();
+        showEventBanner('YOU HAVE BEEN RESCUED! RUN!');
+      }
+    }
+
+    // ==========================================
+    // 7. INPUT HANDLING (DESKTOP + MOBILE TOUCH)
+    // ==========================================
+    const input = {
+      keys: {},
+      joyX: 0,
+      joyY: 0,
+      sprintHeld: false,
+      camYaw: 0,
+      camPitch: 0.42,
+      isDraggingCam: false,
+      lastPointerX: 0,
+      lastPointerY: 0
+    };
+  
