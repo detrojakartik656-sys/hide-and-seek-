@@ -1197,3 +1197,303 @@ addSolidBox(cx + 2.35, platY, cz, 0.35, 1.05, 4.8, sandbagMat);
 
     // Shrinking Safe-Zone 3D Energy Cylinder
     const zoneGeo = new THREE.CylinderGeometry(1, 1, 36, 64, 1, true);
+const zoneMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const zoneWallMesh = new THREE.Mesh(zoneGeo, zoneMat);
+    zoneWallMesh.position.y = 18;
+    scene.add(zoneWallMesh);
+
+    // Zone Ground Ring Indicator
+    const zoneGroundGeo = new THREE.RingGeometry(0.985, 1.0, 64);
+    const zoneGroundMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85
+    });
+    const zoneGroundMesh = new THREE.Mesh(zoneGroundGeo, zoneGroundMat);
+    zoneGroundMesh.rotation.x = -Math.PI / 2;
+    zoneGroundMesh.position.y = 0.12;
+    scene.add(zoneGroundMesh);
+
+    // Atmospheric Drifting Pollen / Dust Motes
+    const particleCount = state.quality === 'HIGH' ? 240 : 80;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPositions = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+      dustPositions[i * 3] = (Math.random() - 0.5) * 210;
+      dustPositions[i * 3 + 1] = 0.5 + Math.random() * 18;
+      dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 210;
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dustMat = new THREE.PointsMaterial({
+      color: 0xfef3c7,
+      size: 0.32,
+      transparent: true,
+      opacity: 0.48
+    });
+    const dustSystem = new THREE.Points(dustGeo, dustMat);
+    scene.add(dustSystem);
+
+    // ==========================================
+    // 5. ARTICULATED HUMAN CHARACTER FACTORY
+    // ==========================================
+    const entities = [];
+    const decoys = [];
+    const vfxList = [];
+    let playerEntity = null;
+
+    // Shared Human Anatomical Geometries (Optimized for 60 FPS with 60 Characters)
+    const humHeadGeo = new THREE.SphereGeometry(0.165, 12, 10);
+    const humHelmetGeo = new THREE.SphereGeometry(0.185, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58);
+    const humCapBrimGeo = new THREE.BoxGeometry(0.24, 0.03, 0.18);
+    const humGoggleGeo = new THREE.BoxGeometry(0.25, 0.075, 0.11);
+    const humNeckGeo = new THREE.CylinderGeometry(0.065, 0.075, 0.12, 8);
+    const humChestGeo = new THREE.BoxGeometry(0.42, 0.48, 0.24);
+    const humVestGeo = new THREE.BoxGeometry(0.45, 0.42, 0.28);
+    const humPackGeo = new THREE.BoxGeometry(0.32, 0.42, 0.18);
+    const humPelvisGeo = new THREE.BoxGeometry(0.38, 0.18, 0.22);
+    const humUpperArmGeo = new THREE.CylinderGeometry(0.068, 0.058, 0.30, 8);
+    humUpperArmGeo.translate(0, -0.14, 0);
+    const humForeArmGeo = new THREE.CylinderGeometry(0.055, 0.045, 0.28, 8);
+    humForeArmGeo.translate(0, -0.13, 0);
+    const humHandGeo = new THREE.SphereGeometry(0.048, 8, 6);
+    const humThighGeo = new THREE.CylinderGeometry(0.088, 0.072, 0.40, 8);
+    humThighGeo.translate(0, -0.19, 0);
+    const humShinGeo = new THREE.CylinderGeometry(0.068, 0.055, 0.38, 8);
+    humShinGeo.translate(0, -0.18, 0);
+    const humBootGeo = new THREE.BoxGeometry(0.12, 0.10, 0.24);
+
+    const crystalGeo = new THREE.OctahedronGeometry(1.12, 0);
+    const ringGeo = new THREE.RingGeometry(0.52, 0.68, 24);
+
+    // Realistic Skin & Tactical Apparel Materials
+    const skinTones = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
+    const hiderOutfitColors = [0x0f766e, 0x0369a1, 0x334155, 0x1d4ed8, 0x2563eb];
+    const hiderPantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+    const hiderVestMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.72 });
+    const hiderPackMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.8 });
+    const hiderGoggleMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9 });
+
+    const seekerArmorMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.45, metalness: 0.35 });
+    const seekerVestMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5, metalness: 0.25 });
+    const seekerPantsMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.75 });
+    const seekerVisorMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8 });
+
+    const freezeCrystalMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.55,
+      roughness: 0.15,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.72
+    });
+
+    function createCharacterMesh(team, isPlayer) {
+      const root = new THREE.Group();
+      const isHider = (team === 'HIDER');
+
+      // Per-character tunic material so smoke stealth transparency works individually
+      const shirtColor = isHider
+        ? hiderOutfitColors[Math.floor(Math.random() * hiderOutfitColors.length)]
+        : 0x1f242d;
+      const shirtMat = new THREE.MeshStandardMaterial({
+        color: shirtColor,
+        roughness: isHider ? 0.75 : 0.48,
+        metalness: isHider ? 0.1 : 0.3
+      });
+
+      const skinMat = new THREE.MeshStandardMaterial({
+        color: skinTones[Math.floor(Math.random() * skinTones.length)],
+        roughness: 0.78
+      });
+
+      const vestMat = isHider ? hiderVestMat : seekerVestMat;
+      const pantsMat = isHider ? hiderPantsMat : seekerPantsMat;
+
+      // Pelvis / Waist Pivot (y = 0.86)
+      const pelvis = new THREE.Mesh(humPelvisGeo, pantsMat);
+      pelvis.position.y = 0.86;
+      pelvis.castShadow = state.quality === 'HIGH';
+      root.add(pelvis);
+
+      // Upper Torso Pivot (bends forward during sprint/crouch)
+      const upperBody = new THREE.Group();
+      upperBody.position.y = 0.94;
+      root.add(upperBody);
+
+      const chest = new THREE.Mesh(humChestGeo, shirtMat);
+      chest.position.y = 0.24;
+      chest.castShadow = state.quality === 'HIGH';
+      upperBody.add(chest);
+
+      // Tactical Plate Carrier / Utility Vest
+      const vest = new THREE.Mesh(humVestGeo, vestMat);
+      vest.position.y = 0.24;
+      upperBody.add(vest);
+
+      // Tactical Backpack (Hiders wear survival backpacks; Seekers wear comms pack)
+      const backpack = new THREE.Mesh(humPackGeo, isHider ? hiderPackMat : seekerArmorMat);
+      backpack.position.set(0, 0.25, -0.19);
+      backpack.castShadow = state.quality === 'HIGH';
+      upperBody.add(backpack);
+
+      // Neck & Sculpted Human Head
+      const neck = new THREE.Mesh(humNeckGeo, skinMat);
+      neck.position.y = 0.52;
+      upperBody.add(neck);
+
+      const headGroup = new THREE.Group();
+      headGroup.position.y = 0.69;
+      upperBody.add(headGroup);
+
+      const head = new THREE.Mesh(humHeadGeo, skinMat);
+      head.castShadow = state.quality === 'HIGH';
+      headGroup.add(head);
+
+      // Headgear: Hiders wear tactical caps/hoods; Seekers wear spec-ops combat helmets
+      const helmet = new THREE.Mesh(humHelmetGeo, isHider ? shirtMat : seekerArmorMat);
+      helmet.position.y = 0.03;
+      headGroup.add(helmet);
+
+      if (isHider) {
+        const brim = new THREE.Mesh(humCapBrimGeo, shirtMat);
+        brim.position.set(0, 0.04, 0.16);
+        headGroup.add(brim);
+      }
+
+      // Tactical Goggles / Visor
+      const visor = new THREE.Mesh(humGoggleGeo, isHider ? hiderGoggleMat : seekerVisorMat);
+      visor.position.set(0, 0.02, 0.145);
+      headGroup.add(visor);
+
+      // Articulated Left & Right Arms (Shoulder -> Elbow -> Hand)
+      function buildArm(side) {
+        const shoulder = new THREE.Group();
+        shoulder.position.set(side * 0.27, 0.44, 0);
+        upperBody.add(shoulder);
+
+        const upperArm = new THREE.Mesh(humUpperArmGeo, shirtMat);
+        upperArm.castShadow = state.quality === 'HIGH';
+        shoulder.add(upperArm);
+
+        const elbow = new THREE.Group();
+        elbow.position.y = -0.28;
+        shoulder.add(elbow);
+
+        const foreArm = new THREE.Mesh(humForeArmGeo, isHider ? skinMat : seekerArmorMat);
+        elbow.add(foreArm);
+
+        const hand = new THREE.Mesh(humHandGeo, isHider ? skinMat : bootMat);
+        hand.position.y = -0.27;
+        elbow.add(hand);
+
+        return { shoulder, elbow };
+      }
+
+      const leftArm = buildArm(-1);
+      const rightArm = buildArm(1);
+
+      // Articulated Left & Right Legs (Hip -> Knee -> Combat Boot)
+      function buildLeg(side) {
+        const hip = new THREE.Group();
+        hip.position.set(side * 0.11, 0.82, 0);
+        root.add(hip);
+
+        const thigh = new THREE.Mesh(humThighGeo, pantsMat);
+        thigh.castShadow = state.quality === 'HIGH';
+        hip.add(thigh);
+
+        const knee = new THREE.Group();
+        knee.position.y = -0.39;
+        hip.add(knee);
+
+        const shin = new THREE.Mesh(humShinGeo, pantsMat);
+        knee.add(shin);
+
+        const boot = new THREE.Mesh(humBootGeo, bootMat);
+        boot.position.set(0, -0.38, 0.04);
+        knee.add(boot);
+
+        return { hip, knee };
+      }
+
+      const leftLeg = buildLeg(-1);
+      const rightLeg = buildLeg(1);
+
+      // Stasis Ice Crystal (Hidden until frozen)
+      const crystal = new THREE.Mesh(crystalGeo, freezeCrystalMat);
+      crystal.position.y = 1.05;
+      crystal.scale.set(0.95, 1.38, 0.95);
+      crystal.visible = false;
+      root.add(crystal);
+
+      // Subtle Team/Player Ground Ring
+      const baseRingMat = new THREE.MeshBasicMaterial({
+        color: isPlayer ? 0xfacc15 : (isHider ? 0x38bdf8 : 0xf43f5e),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: isPlayer ? 0.88 : 0.28
+      });
+      const baseRing = new THREE.Mesh(ringGeo, baseRingMat);
+      baseRing.rotation.x = -Math.PI / 2;
+      baseRing.position.y = 0.04;
+      if (isPlayer) baseRing.scale.set(1.25, 1.25, 1);
+      root.add(baseRing);
+
+      // Thermal Sonar Marker (for Seekers scanning Hiders inside buildings)
+      const beacon = new THREE.Mesh(
+        new THREE.ConeGeometry(0.36, 0.78, 6),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9 })
+      );
+      beacon.position.y = 2.45;
+      beacon.rotation.x = Math.PI;
+      beacon.visible = false;
+      root.add(beacon);
+
+      scene.add(root);
+      return {
+        root,
+        pelvis,
+        upperBody,
+        headGroup,
+        leftArm,
+        rightArm,
+        leftLeg,
+        rightLeg,
+        crystal,
+        baseRing,
+        beacon,
+        bodyMat: shirtMat
+      };
+    }
+
+    function findSafeSpawnPoint(team) {
+      for (let attempt = 0; attempt < 90; attempt++) {
+        let x, z;
+        if (team === 'SEEKER') {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = 4 + Math.random() * 11;
+          x = Math.cos(angle) * dist;
+          z = Math.sin(angle) * dist;
+        } else {
+          // Spawn Hiders across the 4 quadrant villages, outposts, and containers
+          if (hidingSpots.length > 0 && Math.random() < 0.55) {
+            const spot = hidingSpots[Math.floor(Math.random() * hidingSpots.length)];
+            if (Math.hypot(spot.x, spot.z) > 24) {
+              x = spot.x + (Math.random() - 0.5) * 3.5;
+              z = spot.z + (Math.random() - 0.5) * 3.5;
+            } else {
+              x = (Math.random() - 0.5) * 194;
+              z = (Math.random() - 0.5) * 194;
+            }
+          } else {
+            x = (Math.random() - 0.5) * 194;
+            z = (Math.random() - 0.5) * 194;
